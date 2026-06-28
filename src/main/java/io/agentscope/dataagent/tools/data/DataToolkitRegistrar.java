@@ -37,16 +37,12 @@ public class DataToolkitRegistrar {
     private static final Logger log = LoggerFactory.getLogger(DataToolkitRegistrar.class);
 
     private final DataAgentBootstrap bootstrap;
-    private final DataSourceRegistry registry;
-    private final ChartRenderer chartRenderer;
+    private final DataAgentToolkit dataAgentToolkit;
 
     public DataToolkitRegistrar(
-            DataAgentBootstrap bootstrap,
-            DataSourceRegistry registry,
-            ChartRenderer chartRenderer) {
+            DataAgentBootstrap bootstrap, DataAgentToolkit dataAgentToolkit) {
         this.bootstrap = bootstrap;
-        this.registry = registry;
-        this.chartRenderer = chartRenderer;
+        this.dataAgentToolkit = dataAgentToolkit;
     }
 
     @PostConstruct
@@ -63,9 +59,7 @@ public class DataToolkitRegistrar {
                                                             + " onto"));
         }
         try {
-            main.getDelegate()
-                    .getToolkit()
-                    .registerTool(new DataAgentToolkit(registry, chartRenderer));
+            main.getDelegate().getToolkit().registerTool(dataAgentToolkit);
             log.info("Registered DataAgent toolkit onto main agent '{}'", main.getName());
         } catch (RuntimeException e) {
             log.warn("Failed to register DataAgent toolkit onto main agent: {}", e.getMessage());

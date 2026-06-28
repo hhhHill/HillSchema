@@ -15,10 +15,10 @@
  */
 package io.agentscope.dataagent.tools.data;
 
-import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -33,17 +33,18 @@ import org.springframework.context.annotation.Configuration;
  * of the {@code @Bean} methods defined here.
  */
 @Configuration
+@EnableConfigurationProperties(DataToolkitProperties.class)
 public class DataToolkitConfig {
 
     private static final Logger log = LoggerFactory.getLogger(DataToolkitConfig.class);
 
     @Bean
     @ConditionalOnMissingBean(DataSourceRegistry.class)
-    public DataSourceRegistry inMemoryDataSourceRegistry() {
+    public DataSourceRegistry jdbcConfiguredDataSourceRegistry(DataToolkitProperties properties) {
         log.info(
-                "DataToolkitConfig: no DataSourceRegistry bean found, using empty"
-                        + " InMemoryDataSourceRegistry");
-        return new InMemoryDataSourceRegistry(List.of());
+                "DataToolkitConfig: no DataSourceRegistry bean found, using property-backed"
+                        + " JdbcConfiguredDataSourceRegistry");
+        return new JdbcConfiguredDataSourceRegistry(properties);
     }
 
     @Bean
@@ -51,5 +52,50 @@ public class DataToolkitConfig {
     public ChartRenderer stubChartRenderer() {
         log.info("DataToolkitConfig: no ChartRenderer bean found, using StubChartRenderer");
         return new StubChartRenderer();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public JdbcQueryExecutor jdbcQueryExecutor() {
+        return new JdbcQueryExecutor();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(TableDescriptionService.class)
+    public TableDescriptionService tableDescriptionService(
+            DataSourceRegistry registry, JdbcQueryExecutor queryExecutor) {
+        if (registry instanceof JdbcDataSourceResolver resolver) {
+            return new JdbcMetadataService(resolver, queryExecutor);
+        }
+        log.info(
+                "DataToolkitConfig: DataSourceRegistry does not expose JDBC resolution,"
+                        + " falling back to not-implemented TableDescriptionService");
+        return (sourceId, table) ->
+                "not implemented: describe_table requires a connector module (see DataAgent docs)";
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(SqlPreviewService.class)
+    public SqlPreviewService sqlPreviewService(
+            DataSourceRegistry registry, JdbcQueryExecutor queryExecutor) {
+        if (registry instanceof JdbcDataSourceResolver resolver) {
+            return new JdbcSqlPreviewService(resolver, queryExecutor);
+        }
+        log.info(
+                "DataToolkitConfig: DataSourceRegistry does not expose JDBC resolution,"
+                        + " falling back to not-implemented SqlPreviewService");
+        return (sourceId, sql, rowLimit) ->
+                "not implemented: run_sql_preview requires a connector module"
+                        + " (see DataAgent docs)";
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(DataAgentToolkit.class)
+    public DataAgentToolkit dataAgentToolkit(
+            DataSourceRegistry registry,
+            ChartRenderer chartRenderer,
+            TableDescriptionService tableDescriptionService,
+            SqlPreviewService sqlPreviewService) {
+        return new DataAgentToolkit(registry, chartRenderer, tableDescriptionService, sqlPreviewService);
     }
 }

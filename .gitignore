@@ -44,6 +44,5 @@ coverage/
 !.env.example
 
 # Local workspace content
-AgentScope/
-docs/
-.m2-temp/
+/AgentScope/
+/.m2-temp/

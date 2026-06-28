@@ -40,10 +40,31 @@ public final class DataAgentToolkit {
 
     private final DataSourceRegistry registry;
     private final ChartRenderer chartRenderer;
+    private final TableDescriptionService tableDescriptionService;
+    private final SqlPreviewService sqlPreviewService;
 
     public DataAgentToolkit(DataSourceRegistry registry, ChartRenderer chartRenderer) {
+        this(
+                registry,
+                chartRenderer,
+                (sourceId, table) ->
+                        "not implemented: describe_table requires a connector module"
+                                + " (see DataAgent docs)",
+                (sourceId, sql, rowLimit) ->
+                        "not implemented: run_sql_preview requires a connector module"
+                                + " (see DataAgent docs)");
+    }
+
+    public DataAgentToolkit(
+            DataSourceRegistry registry,
+            ChartRenderer chartRenderer,
+            TableDescriptionService tableDescriptionService,
+            SqlPreviewService sqlPreviewService) {
         this.registry = Objects.requireNonNull(registry, "registry");
         this.chartRenderer = Objects.requireNonNull(chartRenderer, "chartRenderer");
+        this.tableDescriptionService =
+                Objects.requireNonNull(tableDescriptionService, "tableDescriptionService");
+        this.sqlPreviewService = Objects.requireNonNull(sqlPreviewService, "sqlPreviewService");
     }
 
     @Tool(
@@ -98,7 +119,7 @@ public final class DataAgentToolkit {
         if (table == null || table.isBlank()) {
             return "error: table must not be blank";
         }
-        return "not implemented: describe_table requires a connector module (see DataAgent docs)";
+        return tableDescriptionService.describe(sourceId, table);
     }
 
     @Tool(
@@ -130,7 +151,7 @@ public final class DataAgentToolkit {
         if (!trimmed.startsWith("select") && !trimmed.startsWith("with")) {
             return "error: only SELECT / WITH statements are allowed";
         }
-        return "not implemented: run_sql_preview requires a connector module (see DataAgent docs)";
+        return sqlPreviewService.preview(sourceId, sql, rowLimit);
     }
 
     @Tool(

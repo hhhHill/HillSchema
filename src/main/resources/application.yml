@@ -137,6 +137,14 @@ dataagent:
     # Maximum payload size accepted on POST /api/me/contributions (bytes).
     max-contribution-bytes: 1048576
 
+  # ---- Registered JDBC data sources ----
+  # Stage 2 of HillSchema uses this list to expose read-only sources to the
+  # agent runtime. Each source should define jdbc-url / driver-class-name /
+  # username / password plus optional semantic.* mappings for the ecommerce
+  # five-table model. Leave empty to disable data-source access.
+  data:
+    sources: []
+
 management:
   endpoints:
     web:
