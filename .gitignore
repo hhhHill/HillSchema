@@ -45,3 +45,5 @@ coverage/
 
 # Local workspace content
 AgentScope/
+docs/
+.m2-temp/

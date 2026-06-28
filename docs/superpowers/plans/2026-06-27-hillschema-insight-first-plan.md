@@ -41,6 +41,71 @@
 
 第一版先围绕统一的电商五表语义跑通。不要一开始就为任意 schema、复杂多租户、多种洞察模板做过度抽象。
 
+### 2.4 优先复用 AgentScope 原有框架实现
+
+第一版除了复用当前 `D:\HillSchema` 工程里的现有能力外，还要把 `D:\agentscope-java-main` 作为框架参考基线，优先复用其中已经成熟的实现方式和扩展模式，避免在 HillSchema 内部重复造轮子。
+
+这里必须明确一个边界：
+
+- `D:\agentscope-java-main` 是参考源码库，不是当前项目的运行时源码目录。
+- 后续执行任务时，不能通过相对路径、额外 source root、临时 classpath 挂载等方式，直接把 `AgentScope` 目录里的包拿来给 `D:\HillSchema` 当前工程编译使用。
+- 如果当前项目缺少某个类、配置层、服务层或模块边界，应当把需要的实现迁入当前项目，再按 HillSchema 当前工程的包结构和依赖关系完成适配。
+
+这里的“复用”不只是复制代码，更重要的是复用框架已经验证过的边界和做法，例如：
+
+- Spring Boot 配置组织方式
+- Agent / Model / Toolkit / Runtime 的装配方式
+- Chat、Session、Workspace 的职责划分
+- Tool 注册与调用链路
+- 调度与后台任务的接入方式
+- Web API、JPA、配置属性等基础组织方式
+
+第一版应当优先做的是“在现有能力上补业务扩展层”，而不是“为了 HillSchema 再实现一套平行框架”。
+
+### 2.5 复用判定规则
+
+后续执行每个开发任务时，默认遵循以下判定顺序：
+
+1. 先看 `D:\HillSchema` 当前工程里有没有已经可直接复用的实现。
+2. 如果当前工程没有，再看 `D:\agentscope-java-main` 里是否已有成熟的框架实现、抽象或推荐接入方式。
+3. 如果框架已经有可复用边界，优先采用“迁入当前项目、最小适配、保持原边界”的方式接入，而不是跨路径直接引用源码。
+4. 如果只缺少少量类或局部模块，就迁入最小必要实现，不整块复制无关内容。
+5. 只有在现有工程和 AgentScope 框架都没有合适承接点时，才新增自定义实现。
+
+### 2.6 禁止的复用方式
+
+下面这些做法在第一版里默认禁止：
+
+- 在 `pom.xml` 或 IDE 配置里把 `D:\agentscope-java-main` 当作当前项目的额外源码目录
+- 通过相对路径直接 import、编译或运行 `AgentScope` 原仓中的源码包
+- 为了复用一个很小能力，把整套无关模块整块耦合进来
+- 不做适配就把参考仓代码原样塞进当前工程，导致当前项目包结构、配置前缀、启动方式和现有主干风格被打乱
+
+允许的做法是：
+
+- 优先复用当前 `D:\HillSchema` 已有实现
+- 以 `AgentScope` 为参考，迁入最小必要类或模块到当前项目
+- 迁入后按当前工程的包名、配置前缀、装配方式和测试体系做适配
+- 在可行的情况下保留原有职责边界，而不是把逻辑糊进一个大类里
+
+可以直接复用或沿用模式的部分，原则上包括：
+
+- 登录后的应用壳、路由和页面组织
+- 聊天接口、会话管理和会话键策略
+- Agent 运行时与工具注册链路
+- Spring Boot 配置、属性绑定、调度启用方式
+- JPA 持久化与控制器组织方式
+
+第一版真正应该新增的内容，主要集中在 HillSchema 自己的业务差异层：
+
+- 洞察数据模型
+- 电商五表语义映射
+- 本地洞察检测器
+- 洞察结果持久化
+- 问题流与问题详情投影
+- 问题上下文提示词装配
+- 洞察首页与详情页
+
 ## 3. 第一版总体实施顺序
 
 整个实施过程建议拆成 6 个阶段：
@@ -319,14 +384,16 @@
 
 - 任务目标：确认当前 `D:\HillSchema` 工程是一个可以继续迭代的稳定起点，并把“当前就是基线”这件事固定下来。
 - 前置依赖：无。
-- 涉及文件：`pom.xml`、`frontend/package.json`、`frontend/src/main.tsx`、`src/main/resources/application.yml`。
+- 涉及文件：`pom.xml`、`frontend/package.json`、`frontend/src/main.tsx`、`src/main/resources/application.yml`，以及框架参考目录 `D:\HillSchema\AgentScope\agentscope-java`。
 - 执行步骤：
   1. 确认当前工程是否已经纳入 git 管理；如果没有，先初始化版本库。
   2. 跑通当前前端构建和后端打包，确认复制过来的工程本身没有隐藏问题。
   3. 记录当前默认首页是 `/chat`，以及后面会改这个入口，但先不要动。
   4. 记录当前 `DataAgentToolkit` 中真正可用的只有 `list_data_sources`，其余数据读能力仍是占位。
+  5. 对照 `D:\HillSchema\AgentScope\agentscope-java`，补一份“可直接复用能力清单”，至少覆盖配置、调度、Model 调用、Tool 注册、Chat/Session、Workspace、JPA 和 Controller 组织方式。
+  6. 同时补一份“禁止跨仓直接引用”的开发约束，确保后续任务执行时不会把 `AgentScope` 原仓路径当成当前项目源码依赖。
 - 完成产物：一个明确的“未改造前状态”基线。
-- 验收标准：当前工程能构建；默认首页、聊天入口、数据源占位能力等边界都已确认清楚。
+- 验收标准：当前工程能构建；默认首页、聊天入口、数据源占位能力等边界都已确认清楚；并且已经明确哪些地方直接复用 AgentScope，哪些地方只补业务扩展。
 - 建议提交信息：`chore: capture hillschema baseline`
 
 ### Task 1：建立洞察模块骨架与配置模型
@@ -341,8 +408,9 @@
 - 执行步骤：
   1. 新建 `io.agentscope.dataagent.insight` 包结构，并先从 `config` 开始。
   2. 定义 `dataagent.insights.*` 配置前缀，承接启停开关、固定调度周期、数据源登记信息和轻量电商语义映射。
-  3. 在 `application.yml` 中补一份第一版默认配置，明确调度固定为 1 分钟。
-  4. 保证即使暂时没有配置任何数据源，应用也能正常启动。
+  3. 配置绑定、模块装配和调度启用方式优先沿用 AgentScope 与当前工程已有的 Spring Boot 写法，不为了洞察模块再发明一套配置体系。
+  4. 在 `application.yml` 中补一份第一版默认配置，明确调度固定为 1 分钟。
+  5. 保证即使暂时没有配置任何数据源，应用也能正常启动。
 - 完成产物：洞察模块骨架、配置入口和基础装配点。
 - 验收标准：新增配置不会破坏现有启动；洞察模块已经有独立命名空间和配置边界。
 - 建议提交信息：`feat: add insight module skeleton`
@@ -362,11 +430,11 @@
   - `src/main/java/io/agentscope/dataagent/tools/data/DataToolkitRegistrar.java`
   - `src/test/java/io/agentscope/dataagent/insight/source/JdbcInsightServicesTest.java`
 - 执行步骤：
-  1. 先实现一个面向已登记 JDBC 数据源的 registry，而不是重写现有 `DataSourceRegistry` 抽象。
+  1. 先复用当前工程已有的 `DataSourceRegistry`、`DataToolkitRegistrar`、`DataAgentToolkit` 等接入边界，而不是重写一套平行抽象。
   2. 新增只读 JDBC 查询执行器，明确只允许 `SELECT / WITH` 类查询，不允许写操作。
   3. 新增表结构描述能力，用于返回字段信息和小样本。
   4. 把 `DataAgentToolkit` 里当前的 “not implemented” 替换成真实服务调用。
-  5. 通过 `DataToolkitConfig` 和 `DataToolkitRegistrar` 把新服务挂回现有工具注册链路。
+  5. 通过 `DataToolkitConfig` 和 `DataToolkitRegistrar` 把新服务挂回现有工具注册链路，保持 AgentScope 风格的工具注册方式不变。
   6. 先用 H2 或本地测试库写验证，确保列表、表描述、SQL preview 都稳定可用。
 - 完成产物：真实可用的数据源读取层，以及可被 Agent 直接使用的数据工具。
 - 验收标准：`list_data_sources`、`describe_table`、`run_sql_preview` 三条链路都可用，且不会放开写权限。
@@ -426,7 +494,7 @@
 - 执行步骤：
   1. 把一次巡检抽成独立刷新服务，不把调度代码直接写进控制器或其他现有模块。
   2. 刷新服务按“数据源 -> 规则检测 -> 状态判断 -> 结果持久化”的顺序执行。
-  3. 调度器只负责每分钟触发，不承担业务判断。
+  3. 调度器只负责每分钟触发，不承担业务判断；调度接入方式优先沿用 Spring Boot 和 AgentScope 当前工程已有模式。
   4. 处理持续问题与已恢复问题的状态流转，避免首页被每分钟完全重复的问题刷满。
   5. 增加手动触发或测试入口，便于在联调阶段不必真的等待一分钟。
 - 完成产物：可周期运行的洞察刷新服务。
@@ -442,10 +510,11 @@
   - `src/main/java/io/agentscope/dataagent/insight/service/InsightNarrativeService.java`
   - `src/test/java/io/agentscope/dataagent/insight/service/InsightNarrativeServiceTest.java`
 - 执行步骤：
-  1. 为模型输入定义一份稳定的最小上下文，只包含聚合结果、变化幅度、时间窗口和关键维度。
-  2. 让模型负责生成标题、摘要、结论、证据说明和建议追问方向。
-  3. 增加模型不可用时的模板化降级逻辑，避免整个调度链路被模型可用性卡死。
-  4. 明确禁止把原始大表或超大明细直接拼进模型上下文。
+  1. 模型调用优先复用当前工程和 AgentScope 已有的 `Model`、消息拼装和生成选项接入方式，不额外包装一套无必要的调用框架。
+  2. 为模型输入定义一份稳定的最小上下文，只包含聚合结果、变化幅度、时间窗口和关键维度。
+  3. 让模型负责生成标题、摘要、结论、证据说明和建议追问方向。
+  4. 增加模型不可用时的模板化降级逻辑，避免整个调度链路被模型可用性卡死。
+  5. 明确禁止把原始大表或超大明细直接拼进模型上下文。
 - 完成产物：结构化候选到可读问题消息的转换层。
 - 验收标准：同一条候选洞察即使模型不可用，也能被稳定写成可展示的问题消息。
 - 建议提交信息：`feat: add insight narrative rendering`
@@ -478,8 +547,8 @@
 - 执行步骤：
   1. 为问题详情页中的聊天构造一份显式的上下文拼装逻辑。
   2. 上下文至少要包含当前问题标题、摘要、结论、证据快照、时间窗口和所属数据源。
-  3. 保持实际聊天执行仍然复用现有 `ChatController` 所在的运行时能力，不另起一套会话基础设施。
-  4. 为问题对话设计独立会话键策略，避免和全局聊天会话相互污染。
+  3. 保持实际聊天执行仍然复用现有 `ChatController`、`SessionAgentManager` 以及 AgentScope 的会话运行时能力，不另起一套聊天和会话基础设施。
+  4. 为问题对话设计独立会话键策略，避免和全局聊天会话相互污染，但仍然沿用当前工程已有的会话组织思路。
 - 完成产物：问题上下文聊天入口和上下文装配层。
 - 验收标准：后端已经能根据某个问题生成“强上下文”对话请求，并稳定返回结果。
 - 建议提交信息：`feat: add insight scoped chat api`
@@ -499,10 +568,11 @@
   - `frontend/src/pages/__tests__/InsightsPage.test.tsx`
 - 执行步骤：
   1. 新增 `/insights` 页面，并把默认路由从 `/chat` 改到 `/insights`。
-  2. 通过新增 API 客户端请求首页问题流和问题详情接口。
-  3. 首页以“问题流”方式展示，不做可视化大盘。
-  4. 详情区域优先展示静态问题信息和证据快照，先不急着把聊天混进同一个任务。
-  5. 保证原有 `/chat`、`/workspace` 等页面仍可访问，不因为主入口切换而失效。
+  2. 页面路由、应用壳和已有导航结构优先沿用当前前端组织方式，不为了首页切换重写 `AppShell` 和整套路由体系。
+  3. 通过新增 API 客户端请求首页问题流和问题详情接口。
+  4. 首页以“问题流”方式展示，不做可视化大盘。
+  5. 详情区域优先展示静态问题信息和证据快照，先不急着把聊天混进同一个任务。
+  6. 保证原有 `/chat`、`/workspace` 等页面仍可访问，不因为主入口切换而失效。
 - 完成产物：新的首页入口和问题流基础页面。
 - 验收标准：登录后默认落到 `/insights`；首页能展示问题流；点击问题能看到详情内容。
 - 建议提交信息：`feat: add insight homepage`
@@ -521,7 +591,7 @@
   1. 把当前 `ChatPanel` 里写死的聊天传输逻辑抽成可替换传输层。
   2. 保持现有 `/chat` 页面继续使用原有默认传输实现。
   3. 为问题详情页新增一套面向问题上下文接口的传输实现。
-  4. 在问题详情页下半部分挂接上下文聊天区，形成“上面看证据、下面继续问”的布局。
+  4. 在问题详情页下半部分挂接上下文聊天区，形成“上面看证据、下面继续问”的布局，尽量复用现有消息渲染、会话恢复和输入交互逻辑。
   5. 验证首页跳详情、详情继续聊天、刷新后保留当前问题上下文这几条路径。
 - 完成产物：问题详情页中的上下文聊天区，以及复用后的聊天组件边界。
 - 验收标准：原有全局聊天不受影响；问题详情页中的聊天可以稳定围绕当前问题工作。
@@ -560,3 +630,167 @@
 8. 联调与文档收口一组提交。
 
 这样每一组提交都能独立 review，也更符合“尽量扩展、不要侵入”的原则。
+
+## 16. AgentScope 复用映射表
+
+这一节用于回答一个更具体的问题：
+
+每个开发任务在执行时，优先应该去 `D:\HillSchema\AgentScope\agentscope-java` 里的哪些模块或类找参考。
+
+这里有两个使用约定：
+
+1. 以下路径默认都相对 `D:\HillSchema\AgentScope\agentscope-java`。
+2. 如果某个任务标注“无直接对等实现”，表示 AgentScope 框架没有现成业务实现可直接搬用，但仍然应该沿用它的边界划分、装配方式或接口组织方式，而不是自行发明一套新框架。
+
+另外要明确一点：
+
+- `agentscope-builder`、`agentscope-paw`、`agentscope-spring-boot-starter` 这些目录都是框架内不同层次的参考实现。
+- 映射时应当优先按“职责相同”来找参考，而不是按“目录名看起来最像”来找。
+
+### Task 0：工程基线冻结
+
+- 优先参考：
+  - `README_zh.md`
+  - `SKILL.md`
+  - `agentscope-extensions/agentscope-spring-boot-starters/agentscope-spring-boot-starter/src/main/java/io/agentscope/spring/boot/properties/AgentscopeProperties.java`
+  - `agentscope-extensions/agentscope-spring-boot-starters/agentscope-spring-boot-starter/src/main/java/io/agentscope/spring/boot/properties/ModelProperties.java`
+  - `agentscope-examples/agents/agentscope-builder/src/main/java/io/agentscope/builder/web/config/BuilderConfig.java`
+  - `agentscope-examples/agents/agentscope-paw/src/main/java/io/agentscope/claw2/web/api/ChatController.java`
+  - `agentscope-examples/agents/agentscope-paw/src/main/java/io/agentscope/claw2/web/api/SessionController.java`
+  - `agentscope-examples/agents/agentscope-paw/src/main/java/io/agentscope/claw2/runtime/session/SessionAgentManager.java`
+  - `agentscope-examples/agents/agentscope-paw/src/main/java/io/agentscope/claw2/web/session/SessionLifecycleScheduler.java`
+  - `agentscope-examples/agents/agentscope-builder/src/main/java/io/agentscope/builder/web/persistence/jpa/JpaPersistenceConfig.java`
+  - `agentscope-examples/agents/agentscope-builder/src/main/java/io/agentscope/builder/web/api/AgentWorkspaceController.java`
+- 复用结论：
+  - 这一任务的重点不是抄代码，而是先把框架内已经成型的配置、聊天、会话、调度、JPA、Workspace 组织方式看清楚。
+  - 后续所有 Task 都应默认建立在这份“可直接复用能力清单”之上。
+
+### Task 1：建立洞察模块骨架与配置模型
+
+- 优先参考：
+  - `agentscope-extensions/agentscope-spring-boot-starters/agentscope-spring-boot-starter/src/main/java/io/agentscope/spring/boot/properties/AgentscopeProperties.java`
+  - `agentscope-extensions/agentscope-spring-boot-starters/agentscope-spring-boot-starter/src/main/java/io/agentscope/spring/boot/properties/ModelProperties.java`
+  - `agentscope-examples/agents/agentscope-builder/src/main/java/io/agentscope/builder/web/config/BuilderConfig.java`
+- 复用结论：
+  - `InsightProperties` 的配置绑定方式应沿用 Spring Boot 标准 `@ConfigurationProperties` 模式。
+  - 模型选择、默认值和可选启用逻辑，优先参考 `BuilderConfig` 的装配思路，不额外造一个新的配置体系。
+  - 如果当前工程缺少某个配置类或装配模式，应把需要的结构迁入当前工程，而不是直接引用 `AgentScope` 原仓对应包。
+
+### Task 2：补齐已登记数据源读取能力
+
+- 优先参考：
+  - `agentscope-examples/documentation/src/main/java/io/agentscope/examples/documentation2/tool/ToolCallingExample.java`
+  - `agentscope-examples/agents/agentscope-paw/src/main/java/io/agentscope/claw2/web/api/AgentToolsController.java`
+  - `SKILL.md` 中关于 `toolkit.registerTool()`、`@ToolParam`、`Model / Tool` 接入约束的说明
+- 复用结论：
+  - AgentScope 原仓里没有现成的 `DataAgentToolkit` / JDBC 数据源实现可直接搬用。
+  - 这一任务的复用重点不在“数据源实现本身”，而在“工具如何注册、如何暴露、如何保持与 Agent 运行时兼容”。
+  - 因此本任务应沿用当前工程已有的 `DataAgentToolkit`、`DataToolkitRegistrar`、`DataSourceRegistry` 作为 seam，只补真实 JDBC 实现，不再另造新的工具接入框架。
+  - 如果需要从 `AgentScope` 参考仓借用工具注册模式或辅助类，也必须迁入当前项目后再适配，不能跨目录直接使用。
+
+### Task 3：建立洞察结果持久化模型
+
+- 优先参考：
+  - `agentscope-examples/agents/agentscope-builder/src/main/java/io/agentscope/builder/web/persistence/jpa/JpaPersistenceConfig.java`
+  - `agentscope-examples/agents/agentscope-builder/src/main/java/io/agentscope/builder/web/persistence/jpa/AgentEntity.java`
+  - `agentscope-examples/agents/agentscope-builder/src/main/java/io/agentscope/builder/web/persistence/jpa/UserEntity.java`
+  - `agentscope-examples/agents/agentscope-builder/src/main/java/io/agentscope/builder/web/persistence/jpa/AgentEntityRepository.java`
+  - `agentscope-examples/agents/agentscope-builder/src/main/java/io/agentscope/builder/web/persistence/jpa/UserEntityRepository.java`
+- 复用结论：
+  - 洞察批次、问题消息、证据快照的 JPA 落法，应沿用 AgentScope 示例工程的 entity/repository/config 分层方式。
+  - 不需要为了洞察持久化再引入另一套 ORM 结构或额外数据访问框架。
+  - 如需参考 `JpaPersistenceConfig` 的组织方式，应在当前工程内新增对应配置和实体，不直接耦合到参考仓包名。
+
+### Task 4：实现本地洞察检测器
+
+- 优先参考：
+  - 无直接对等实现
+- 复用结论：
+  - 这是 HillSchema 第一版最核心的业务差异层，AgentScope 框架本身不提供“电商五表自动洞察检测器”。
+  - 这一任务应保持为纯业务域模块，尽量只依赖 Task 2 产出的读取能力和 Task 3 的持久化模型，不把它和 Agent runtime、Chat、Controller 混在一起。
+
+### Task 5：打通调度与刷新链路
+
+- 优先参考：
+  - `agentscope-examples/agents/agentscope-paw/src/main/java/io/agentscope/claw2/web/session/SessionLifecycleScheduler.java`
+  - `agentscope-examples/agents/agentscope-builder/src/main/java/io/agentscope/builder/web/session/SessionLifecycleScheduler.java`
+  - `agentscope-extensions/agentscope-extensions-scheduler/agentscope-extensions-scheduler-common/src/main/java/io/agentscope/extensions/scheduler/config/ModelConfig.java`
+  - `agentscope-extensions/agentscope-extensions-scheduler/agentscope-extensions-scheduler-common/src/main/java/io/agentscope/extensions/scheduler/config/AgentConfig.java`
+- 复用结论：
+  - 第一版的 1 分钟洞察任务应优先参考现有会话调度器的接入方式，把“调度触发”和“业务刷新执行”分开。
+  - 暂时不必把这一版直接做成完整通用调度平台，但后续如果要把洞察调度做成配置化能力，可以继续向 `agentscope-extensions-scheduler` 的方向靠拢。
+  - 即使参考 `SessionLifecycleScheduler`，最终落地的调度器也必须存在于当前项目自己的源码树中。
+
+### Task 6：接入模型表达层
+
+- 优先参考：
+  - `agentscope-examples/agents/agentscope-paw/src/main/java/io/agentscope/claw2/web/ai/AgentDraftService.java`
+  - `agentscope-examples/agents/agentscope-builder/src/main/java/io/agentscope/builder/web/ai/AgentDraftService.java`
+  - `agentscope-examples/agents/agentscope-builder/src/main/java/io/agentscope/builder/web/config/BuilderConfig.java`
+  - `agentscope-extensions/agentscope-spring-boot-starters/agentscope-spring-boot-starter/src/main/java/io/agentscope/spring/boot/properties/ModelProperties.java`
+- 复用结论：
+  - 洞察文案生成应复用 AgentScope 当前已有的 `Model` bean 注入方式、消息组装方式和调用容错思路。
+  - 不要为“洞察文案生成”再封装一套新的模型中间层；只需要在现有 `Model` 接入方式上补一层针对洞察场景的 prompt/service 即可。
+  - 如果需要参考 `AgentDraftService` 的实现细节，应迁入最小必要逻辑，而不是直接依赖参考仓 service 类。
+
+### Task 7：开放问题流与问题详情后端接口
+
+- 优先参考：
+  - `agentscope-examples/agents/agentscope-paw/src/main/java/io/agentscope/claw2/web/api/SessionController.java`
+  - `agentscope-examples/agents/agentscope-paw/src/main/java/io/agentscope/claw2/web/api/AgentToolsController.java`
+  - `agentscope-examples/agents/agentscope-builder/src/main/java/io/agentscope/builder/web/api/AgentWorkspaceController.java`
+- 复用结论：
+  - 问题流与问题详情接口应沿用 AgentScope 示例工程现有的 controller/service 分层、`agentId` 作用域组织和错误响应风格。
+  - 只新增洞察相关接口，不发明新的 API 框架或权限模型。
+
+### Task 8：接入问题上下文对话后端
+
+- 优先参考：
+  - `agentscope-examples/agents/agentscope-paw/src/main/java/io/agentscope/claw2/web/api/ChatController.java`
+  - `agentscope-examples/agents/agentscope-paw/src/main/java/io/agentscope/claw2/web/api/SessionController.java`
+  - `agentscope-examples/agents/agentscope-paw/src/main/java/io/agentscope/claw2/runtime/session/SessionAgentManager.java`
+  - `agentscope-examples/agents/agentscope-paw/src/main/java/io/agentscope/claw2/web/ai/AgentDraftService.java`
+- 复用结论：
+  - 洞察上下文对话必须复用现有聊天与会话运行时，只在消息进入模型之前增加“洞察上下文装配”这一层。
+  - 会话隔离策略也应建立在现有 `SessionAgentManager` 的思路上，而不是为洞察详情页再做一个新的聊天引擎。
+  - 即使需要补充类似 `ChatController` 的结构，也应在当前工程内新增 `InsightChatController` 或配套 service，不直接引用参考仓控制器实现。
+
+### Task 9：改造前端首页入口并落问题流页面
+
+- 优先参考：
+  - AgentScope 原仓中无可直接复用的同名前端页面文件
+  - 后端职责参考：
+    - `agentscope-examples/agents/agentscope-paw/src/main/java/io/agentscope/claw2/web/api/ChatController.java`
+    - `agentscope-examples/agents/agentscope-paw/src/main/java/io/agentscope/claw2/web/api/SessionController.java`
+    - `agentscope-examples/agents/agentscope-builder/src/main/java/io/agentscope/builder/web/api/AgentWorkspaceController.java`
+- 复用结论：
+  - AgentScope 原仓主要提供后端与运行时参考，这一任务的前端复用主来源仍然是当前复制到 `D:\HillSchema` 的 `frontend/src/main.tsx`、`AppShell.tsx`、`ChatPage.tsx`、`WorkspacePage.tsx`。
+  - 因此本任务的框架复用点，主要体现在“页面入口切换后仍然遵守现有 API scope 和应用壳结构”，而不是去 AgentScope 原仓里找一份现成首页页面直接搬用。
+  - 前端如果缺少某个页面级组织能力，也应直接补到当前 `frontend` 工程里，而不是通过外部目录拼接源码。
+
+### Task 10：复用现有聊天组件接入问题上下文对话
+
+- 优先参考：
+  - AgentScope 原仓中无可直接复用的同名前端聊天组件文件
+  - 后端协议参考：
+    - `agentscope-examples/agents/agentscope-paw/src/main/java/io/agentscope/claw2/web/api/ChatController.java`
+    - `agentscope-examples/agents/agentscope-paw/src/main/java/io/agentscope/claw2/web/api/SessionController.java`
+    - `agentscope-examples/agents/agentscope-paw/src/main/java/io/agentscope/claw2/runtime/session/SessionAgentManager.java`
+- 复用结论：
+  - 前端层的核心复用对象仍然是当前工程里的 `ChatPanel.tsx` 和对应 chat/session API 客户端。
+  - AgentScope 原仓在这一任务里提供的是后端协议和会话语义参考，而不是一份现成前端组件。
+  - 因此本任务应采用“抽传输层、保留消息渲染层”的方式扩展，而不是重写聊天 UI。
+  - 如果缺少可复用的前端聊天边界，应在当前项目内重构 `ChatPanel`，而不是尝试从外部参考仓直接拼入前端源码。
+
+### Task 11：联调、验证与文档收口
+
+- 优先参考：
+  - `README_zh.md`
+  - `SKILL.md`
+  - `agentscope-examples/agents/agentscope-builder/src/main/java/io/agentscope/builder/web/config/BuilderConfig.java`
+  - `agentscope-examples/agents/agentscope-builder/src/main/java/io/agentscope/builder/web/persistence/jpa/JpaPersistenceConfig.java`
+  - `agentscope-examples/agents/agentscope-paw/src/main/java/io/agentscope/claw2/web/api/ChatController.java`
+  - `agentscope-examples/agents/agentscope-paw/src/main/java/io/agentscope/claw2/web/api/SessionController.java`
+- 复用结论：
+  - 最终联调阶段要反过来检查：我们新增的洞察链路有没有破坏原本 AgentScope 风格的配置、会话、接口和持久化边界。
+  - 文档说明也应清楚区分“复用的框架能力”和“HillSchema 新增的业务层能力”。
