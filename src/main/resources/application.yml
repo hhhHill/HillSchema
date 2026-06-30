@@ -145,6 +145,14 @@ dataagent:
   data:
     sources: []
 
+  # ---- HillSchema insight pipeline ----
+  # The automatic insight refresh loop is enabled by default and scans the
+  # registered JDBC sources every minute. When no sources are configured, the
+  # scheduler stays idle without failing application startup.
+  insights:
+    enabled: true
+    refresh-interval: PT1M
+
 management:
   endpoints:
     web:

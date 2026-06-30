@@ -13,12 +13,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.agentscope.dataagent.tools.data;
+package io.agentscope.dataagent.insight.config;
 
-import java.util.Optional;
+import java.time.Clock;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 
-/** Resolver for the concrete JDBC connection details behind a public descriptor. */
-public interface JdbcDataSourceResolver {
+/** Base Spring wiring for the insight module. */
+@Configuration
+@EnableConfigurationProperties(InsightProperties.class)
+public class InsightModuleConfig {
 
-    Optional<JdbcRegisteredDataSource> resolve(String sourceId);
+    @Bean
+    @ConditionalOnMissingBean
+    public Clock insightClock() {
+        return Clock.systemUTC();
+    }
 }

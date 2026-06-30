@@ -13,12 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.agentscope.dataagent.tools.data;
+package io.agentscope.dataagent.insight.config;
 
-import java.util.Optional;
+import org.springframework.context.annotation.Configuration;
 
-/** Resolver for the concrete JDBC connection details behind a public descriptor. */
-public interface JdbcDataSourceResolver {
-
-    Optional<JdbcRegisteredDataSource> resolve(String sourceId);
-}
+/** Reserved scheduling wiring for the periodic insight refresh job. */
+@Configuration
+public class InsightSchedulingConfig {}

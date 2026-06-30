@@ -13,12 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.agentscope.dataagent.tools.data;
+package io.agentscope.dataagent.insight.domain;
 
-import java.util.Optional;
+import java.util.List;
 
-/** Resolver for the concrete JDBC connection details behind a public descriptor. */
-public interface JdbcDataSourceResolver {
+/** User-facing narrative rendered from a structured insight candidate. */
+public record InsightNarrative(
+        String title,
+        String summary,
+        String conclusion,
+        String evidenceExplanation,
+        List<String> followUpQuestions) {
 
-    Optional<JdbcRegisteredDataSource> resolve(String sourceId);
+    public InsightNarrative {
+        followUpQuestions = followUpQuestions == null ? List.of() : List.copyOf(followUpQuestions);
+    }
 }

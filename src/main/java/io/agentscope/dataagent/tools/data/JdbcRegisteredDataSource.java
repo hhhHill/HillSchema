@@ -15,7 +15,7 @@
  */
 package io.agentscope.dataagent.tools.data;
 
-record JdbcRegisteredDataSource(
+public record JdbcRegisteredDataSource(
         DataSource descriptor,
         String jdbcUrl,
         String driverClassName,

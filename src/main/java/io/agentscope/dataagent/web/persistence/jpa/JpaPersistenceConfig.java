@@ -57,8 +57,8 @@ import org.springframework.transaction.annotation.EnableTransactionManagement;
  * {@code spring.datasource.url}.
  */
 @Configuration
-@EnableJpaRepositories(basePackageClasses = JpaPersistenceConfig.class)
-@EntityScan(basePackageClasses = JpaPersistenceConfig.class)
+@EnableJpaRepositories(basePackages = "io.agentscope.dataagent")
+@EntityScan(basePackages = "io.agentscope.dataagent")
 @EnableTransactionManagement
 public class JpaPersistenceConfig {
 

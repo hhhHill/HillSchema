@@ -13,12 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.agentscope.dataagent.tools.data;
+package io.agentscope.dataagent.insight.persistence.jpa;
 
-import java.util.Optional;
+import java.util.List;
+import org.springframework.data.jpa.repository.JpaRepository;
 
-/** Resolver for the concrete JDBC connection details behind a public descriptor. */
-public interface JdbcDataSourceResolver {
+/** Spring Data repository for insight evidence snapshots. */
+public interface InsightEvidenceRepository extends JpaRepository<InsightEvidenceEntity, Long> {
 
-    Optional<JdbcRegisteredDataSource> resolve(String sourceId);
+    List<InsightEvidenceEntity> findByItemOrderByRowIdAsc(InsightItemEntity item);
 }

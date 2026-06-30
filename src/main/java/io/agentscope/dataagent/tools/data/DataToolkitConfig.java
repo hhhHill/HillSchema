@@ -17,6 +17,7 @@ package io.agentscope.dataagent.tools.data;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -37,6 +38,12 @@ import org.springframework.context.annotation.Configuration;
 public class DataToolkitConfig {
 
     private static final Logger log = LoggerFactory.getLogger(DataToolkitConfig.class);
+    private static final String DESCRIBE_TABLE_NOT_IMPLEMENTED =
+            "not implemented: describe_table requires a connector module"
+                    + " (see DataAgent docs)";
+    private static final String SQL_PREVIEW_NOT_IMPLEMENTED =
+            "not implemented: run_sql_preview requires a connector module"
+                    + " (see DataAgent docs)";
 
     @Bean
     @ConditionalOnMissingBean(DataSourceRegistry.class)
@@ -63,30 +70,29 @@ public class DataToolkitConfig {
     @Bean
     @ConditionalOnMissingBean(TableDescriptionService.class)
     public TableDescriptionService tableDescriptionService(
-            DataSourceRegistry registry, JdbcQueryExecutor queryExecutor) {
-        if (registry instanceof JdbcDataSourceResolver resolver) {
-            return new JdbcMetadataService(resolver, queryExecutor);
+            ObjectProvider<JdbcDataSourceResolver> resolverProvider, JdbcQueryExecutor queryExecutor) {
+        JdbcDataSourceResolver resolver = resolverProvider.getIfAvailable();
+        if (resolver == null) {
+            log.info(
+                    "DataToolkitConfig: no JdbcDataSourceResolver bean found, using"
+                            + " connector-boundary TableDescriptionService");
+            return (sourceId, table) -> DESCRIBE_TABLE_NOT_IMPLEMENTED;
         }
-        log.info(
-                "DataToolkitConfig: DataSourceRegistry does not expose JDBC resolution,"
-                        + " falling back to not-implemented TableDescriptionService");
-        return (sourceId, table) ->
-                "not implemented: describe_table requires a connector module (see DataAgent docs)";
+        return new JdbcMetadataService(resolver, queryExecutor);
     }
 
     @Bean
     @ConditionalOnMissingBean(SqlPreviewService.class)
     public SqlPreviewService sqlPreviewService(
-            DataSourceRegistry registry, JdbcQueryExecutor queryExecutor) {
-        if (registry instanceof JdbcDataSourceResolver resolver) {
-            return new JdbcSqlPreviewService(resolver, queryExecutor);
+            ObjectProvider<JdbcDataSourceResolver> resolverProvider, JdbcQueryExecutor queryExecutor) {
+        JdbcDataSourceResolver resolver = resolverProvider.getIfAvailable();
+        if (resolver == null) {
+            log.info(
+                    "DataToolkitConfig: no JdbcDataSourceResolver bean found, using"
+                            + " connector-boundary SqlPreviewService");
+            return (sourceId, sql, rowLimit) -> SQL_PREVIEW_NOT_IMPLEMENTED;
         }
-        log.info(
-                "DataToolkitConfig: DataSourceRegistry does not expose JDBC resolution,"
-                        + " falling back to not-implemented SqlPreviewService");
-        return (sourceId, sql, rowLimit) ->
-                "not implemented: run_sql_preview requires a connector module"
-                        + " (see DataAgent docs)";
+        return new JdbcSqlPreviewService(resolver, queryExecutor);
     }
 
     @Bean

@@ -20,6 +20,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -28,6 +30,22 @@ class DataToolkitJdbcIntegrationTest {
 
     private final ApplicationContextRunner contextRunner =
             new ApplicationContextRunner().withUserConfiguration(DataToolkitConfig.class);
+    private final ApplicationContextRunner nonJdbcContextRunner =
+            new ApplicationContextRunner()
+                    .withUserConfiguration(DataToolkitConfig.class)
+                    .withBean(
+                            DataSourceRegistry.class,
+                            () ->
+                                    new InMemoryDataSourceRegistry(
+                                            List.of(
+                                                    new DataSource(
+                                                            "crm-api",
+                                                            "CRM API",
+                                                            "HTTP-backed source without JDBC resolver",
+                                                            "rest",
+                                                            "https://crm.example.internal",
+                                                            List.of("crm"),
+                                                            Map.of("semantic.orders", "orders")))));
 
     @Test
     void bindsConfiguredJdbcSourcesIntoRegistry() throws Exception {
@@ -80,6 +98,23 @@ class DataToolkitJdbcIntegrationTest {
 
             assertThat(toolkit.runSqlPreview("orders-demo", "delete from orders", 2))
                     .isEqualTo("error: only SELECT / WITH statements are allowed");
+        });
+    }
+
+    @Test
+    void fallsBackToNotImplementedServicesWhenRegistryDoesNotExposeJdbcConnections() {
+        nonJdbcContextRunner.run(context -> {
+            assertThat(context).hasNotFailed();
+
+            DataAgentToolkit toolkit = context.getBean(DataAgentToolkit.class);
+            assertThat(toolkit.describeTable("crm-api", "orders"))
+                    .isEqualTo(
+                            "not implemented: describe_table requires a connector module"
+                                    + " (see DataAgent docs)");
+            assertThat(toolkit.runSqlPreview("crm-api", "select * from orders", 5))
+                    .isEqualTo(
+                            "not implemented: run_sql_preview requires a connector module"
+                                    + " (see DataAgent docs)");
         });
     }
 

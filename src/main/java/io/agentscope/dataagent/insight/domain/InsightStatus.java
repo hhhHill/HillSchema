@@ -13,12 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.agentscope.dataagent.tools.data;
+package io.agentscope.dataagent.insight.domain;
 
-import java.util.Optional;
-
-/** Resolver for the concrete JDBC connection details behind a public descriptor. */
-public interface JdbcDataSourceResolver {
-
-    Optional<JdbcRegisteredDataSource> resolve(String sourceId);
+/** Lifecycle state for an insight item across recurring refresh runs. */
+public enum InsightStatus {
+    NEW,
+    CONTINUING,
+    RESOLVED
 }
