@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { currentSession, stream } from '../api/chat';
-import { TurnEntry, turns as fetchTurns } from '../api/sessions';
+import { defaultChatTransport, ChatTransport } from '../api/chatTransport';
+import { TurnEntry } from '../api/sessions';
 import ToolCallBlock from './ToolCallBlock';
 
 type Role = 'user' | 'assistant' | 'system';
@@ -68,7 +68,7 @@ let counter = 0;
 const nextId = () => `m${Date.now().toString(36)}-${counter++}`;
 
 const STORAGE_PREFIX = 'claw_chat_session:';
-const storageKey = (agentId: string) => `${STORAGE_PREFIX}${agentId}`;
+const storageKey = (scope: string) => `${STORAGE_PREFIX}${scope}`;
 
 function turnsToMessages(turns: TurnEntry[]): Message[] {
   const out: Message[] = [];
@@ -100,9 +100,22 @@ export interface ChatPanelProps {
   agentId: string;
   /** Called after each successful message turn so the sessions sidebar can refresh. */
   onSessionUpdate?: () => void;
+  transport?: ChatTransport;
+  sessionStorageScope?: string;
+  sessionParamName?: string;
+  placeholder?: string;
+  emptyState?: string;
 }
 
-export default function ChatPanel({ agentId, onSessionUpdate }: ChatPanelProps) {
+export default function ChatPanel({
+  agentId,
+  onSessionUpdate,
+  transport = defaultChatTransport,
+  sessionStorageScope,
+  sessionParamName = 'session',
+  placeholder,
+  emptyState,
+}: ChatPanelProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -111,24 +124,25 @@ export default function ChatPanel({ agentId, onSessionUpdate }: ChatPanelProps) 
   const [sessionKey, setSessionKey] = useState<string | null>(null);
   const threadRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const storageScope = sessionStorageScope ?? agentId;
 
   const persistSession = useCallback((key: string | null) => {
     if (key) {
-      try { localStorage.setItem(storageKey(agentId), key); } catch { /* ignore quota */ }
+      try { localStorage.setItem(storageKey(storageScope), key); } catch { /* ignore quota */ }
     } else {
-      try { localStorage.removeItem(storageKey(agentId)); } catch { /* ignore */ }
+      try { localStorage.removeItem(storageKey(storageScope)); } catch { /* ignore */ }
     }
-  }, [agentId]);
+  }, [storageScope]);
 
   // On agent or URL session change: pick a session (URL > localStorage > backend default) and rehydrate.
-  const urlSession = searchParams.get('session');
+  const urlSession = searchParams.get(sessionParamName);
   useEffect(() => {
     let cancelled = false;
     setMessages([]);
     setInput('');
     setRestoring(true);
 
-    const stored = (() => { try { return localStorage.getItem(storageKey(agentId)); } catch { return null; } })();
+    const stored = (() => { try { return localStorage.getItem(storageKey(storageScope)); } catch { return null; } })();
 
     async function run() {
       // URL-provided session always wins: it may be a freshly-minted UUID that the
@@ -136,7 +150,7 @@ export default function ChatPanel({ agentId, onSessionUpdate }: ChatPanelProps) 
       let key: string | null = urlSession;
       if (!key) {
         try {
-          const cur = await currentSession(agentId, stored ?? undefined);
+          const cur = await transport.currentSession(agentId, stored ?? undefined);
           key = cur.sessionKey || stored || null;
         } catch {
           key = stored || null;
@@ -146,7 +160,7 @@ export default function ChatPanel({ agentId, onSessionUpdate }: ChatPanelProps) 
       setSessionKey(key);
       if (key) {
         try {
-          const list = await fetchTurns(agentId, key);
+          const list = await transport.turns(agentId, key);
           if (cancelled) return;
           setMessages(turnsToMessages(list));
         } catch {
@@ -157,17 +171,22 @@ export default function ChatPanel({ agentId, onSessionUpdate }: ChatPanelProps) 
       setRestoring(false);
       if (key && key !== urlSession) {
         const next = new URLSearchParams(searchParams);
-        next.set('session', key);
+        next.set(sessionParamName, key);
         setSearchParams(next, { replace: true });
       }
     }
     run();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agentId, urlSession]);
+  }, [agentId, searchParams, setSearchParams, sessionParamName, storageScope, transport, urlSession]);
 
   useEffect(() => {
-    threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight });
+    if (!threadRef.current) return;
+    if (typeof threadRef.current.scrollTo === 'function') {
+      threadRef.current.scrollTo({ top: threadRef.current.scrollHeight });
+    } else {
+      threadRef.current.scrollTop = threadRef.current.scrollHeight;
+    }
   }, [messages]);
 
   const canSend = useMemo(() => !busy && !restoring && input.trim().length > 0, [busy, restoring, input]);
@@ -182,7 +201,7 @@ export default function ChatPanel({ agentId, onSessionUpdate }: ChatPanelProps) 
     setMessages(prev => [...prev, userMsg, replyMsg]);
 
     try {
-      for await (const evt of stream(agentId, { message: text, sessionKey: sessionKey ?? undefined })) {
+      for await (const evt of transport.stream(agentId, { message: text, sessionKey: sessionKey ?? undefined })) {
         if (evt.type === 'token') {
           const chunk = evt.data ?? '';
           setMessages(prev => prev.map(m => m.id === replyMsg.id ? { ...m, text: m.text + chunk } : m));
@@ -215,8 +234,8 @@ export default function ChatPanel({ agentId, onSessionUpdate }: ChatPanelProps) 
             setSessionKey(evt.sessionKey);
             persistSession(evt.sessionKey);
             const next = new URLSearchParams(searchParams);
-            if (next.get('session') !== evt.sessionKey) {
-              next.set('session', evt.sessionKey);
+            if (next.get(sessionParamName) !== evt.sessionKey) {
+              next.set(sessionParamName, evt.sessionKey);
               setSearchParams(next, { replace: true });
             }
           }
@@ -254,7 +273,7 @@ export default function ChatPanel({ agentId, onSessionUpdate }: ChatPanelProps) 
         )}
         {!restoring && messages.length === 0 && (
           <div style={S.empty}>
-            Start a new conversation. Try <code style={{ background: '#e2e8f0', padding: '1px 6px', borderRadius: 4 }}>/reset</code> to clear the session.
+            {emptyState || <>Start a new conversation. Try <code style={{ background: '#e2e8f0', padding: '1px 6px', borderRadius: 4 }}>/reset</code> to clear the session.</>}
           </div>
         )}
         {messages.map(m => (
@@ -285,7 +304,7 @@ export default function ChatPanel({ agentId, onSessionUpdate }: ChatPanelProps) 
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={restoring ? 'Loading…' : `Message ${agentId}…`}
+          placeholder={restoring ? 'Loading…' : (placeholder ?? `Message ${agentId}…`)}
           rows={1}
           autoFocus
           disabled={restoring}

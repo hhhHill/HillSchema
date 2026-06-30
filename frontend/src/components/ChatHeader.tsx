@@ -39,6 +39,15 @@ export default function ChatHeader({ agent }: ChatHeaderProps) {
       </div>
 
       <div style={S.right}>
+        <button
+          onClick={() => navigate('/insights')}
+          style={S.btn}
+          onMouseEnter={e => { e.currentTarget.style.background = '#eef2ff'; e.currentTarget.style.color = '#3730a3'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.color = '#475569'; }}
+          title="Review the insight feed"
+        >
+          <span>🧭</span> Insights
+        </button>
         {canEdit && CONFIG_BUTTONS.map(b => (
           <button
             key={b.key}

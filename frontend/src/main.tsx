@@ -7,6 +7,7 @@ import AppShell from './components/AppShell';
 import EditTierGate from './components/EditTierGate';
 
 import ChatPage from './pages/ChatPage';
+import InsightsPage from './pages/InsightsPage';
 import WorkspacePage from './pages/WorkspacePage';
 import SkillsPage from './pages/configure/SkillsPage';
 import SubagentsPage from './pages/configure/SubagentsPage';
@@ -55,7 +56,7 @@ function PrivateRoute({ children }: { children: React.ReactElement }) {
 
 function AdminRoute({ children }: { children: React.ReactElement }) {
   if (!getToken()) return <Navigate to="/login" replace />;
-  if (!isAdmin()) return <Navigate to="/chat" replace />;
+  if (!isAdmin()) return <Navigate to="/insights" replace />;
   return children;
 }
 
@@ -66,7 +67,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <Route path="/login" element={<LoginPage />} />
 
         <Route element={<PrivateRoute><AppShell /></PrivateRoute>}>
-          <Route index element={<Navigate to="/chat" replace />} />
+          <Route index element={<Navigate to="/insights" replace />} />
+
+          <Route path="/insights" element={<InsightsPage />} />
 
           {/* Primary chat surface */}
           <Route path="/chat" element={<ChatPage />} />
@@ -103,7 +106,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="/admin/debug"           element={<AdminRoute><DebugPage /></AdminRoute>} />
         </Route>
 
-        <Route path="*" element={<Navigate to="/chat" replace />} />
+        <Route path="*" element={<Navigate to="/insights" replace />} />
       </Routes>
     </BrowserRouter>
   </React.StrictMode>,

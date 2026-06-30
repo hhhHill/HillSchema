@@ -32,6 +32,18 @@ dataagent is built to be deployed distributed from day one — flip on the
 shared-state switch and any replica can serve any user, no sticky sessions
 required.
 
+### HillSchema insight-first mode
+
+This branch turns the default entry flow into an **insight-first** experience:
+
+- Users log in to `/insights`, not `/chat`.
+- The backend scans registered JDBC sources every minute and persists generated
+  insight batches, items, and evidence snapshots.
+- The homepage shows the persisted issue feed; detail panels explain the
+  conclusion and snapshot that existed **at generation time**.
+- Follow-up chat on the detail page injects the current issue context into the
+  existing chat runtime instead of opening a generic database Q&A session.
+
 ### At a glance
 
 | | dataagent |
@@ -108,11 +120,17 @@ bus are all backed by Redis, so any replica can serve any user. See
   snippets from their own workspace as *contributions*. Admins approve via the
   Approvals page; approved files land under `shared/` and become visible to
   every tenant on the next agent build (via the overlay's lower layer).
-- **DataAgent toolkit slot** — `list_data_sources`, `describe_table`,
-  `run_sql_preview`, `render_chart` are registered on every data agent. v1
-  ships interface-only stubs plus an `InMemoryDataSourceRegistry` so admins
-  can seed sources via `agentscope.json`; concrete JDBC connectors are out of
-  scope and slot in via `DataSourceRegistry` / `ChartRenderer` Spring beans.
+- **Registered JDBC data toolkit** — `list_data_sources`, `describe_table`,
+  `run_sql_preview`, `render_chart` are registered on every data agent.
+  Property-backed JDBC sources now support read-only schema introspection and
+  SQL preview for configured sources.
+- **Insight refresh pipeline** — deterministic ecommerce detectors scan
+  configured JDBC sources every minute, then persist narrative items and
+  evidence snapshots for the insight feed.
+- **Insight homepage + scoped follow-up chat** — `/insights` lists persisted
+  issues, `/api/agents/{agentId}/insights/{itemId}` returns the detail
+  projection, and detail-page follow-up chat reuses the existing chat/session
+  runtime with explicit issue-bound context injection.
 
 ---
 
@@ -167,7 +185,37 @@ export DASHSCOPE_API_KEY=sk-...
 
 Or provide your own `Model` Spring bean to use a different provider.
 
-### 2. (Optional) Enable Redis for distributed deployment
+### 2. Register at least one JDBC source for the insight pipeline
+
+Insight generation only runs against sources declared under
+`dataagent.data.sources[*]`. A minimal local example looks like this:
+
+```yaml
+dataagent:
+  data:
+    sources:
+      - id: shop-demo
+        label: Shop Demo
+        kind: jdbc
+        jdbc-url: jdbc:mysql://localhost:3306/shop
+        driver-class-name: com.mysql.cj.jdbc.Driver
+        username: shop_reader
+        password: ${SHOP_DB_PASSWORD:}
+        preview-row-limit: 50
+        sample-row-limit: 5
+        semantic:
+          orders: orders
+          order-items: order_items
+          users: users
+          products: products
+          refunds: refunds
+          time-column: created_at
+```
+
+The first version expects the ecommerce five-table shape above. If no sources
+are configured, the scheduler stays idle and the `/insights` feed remains empty.
+
+### 3. (Optional) Enable Redis for distributed deployment
 
 ```yaml
 dataagent:
@@ -193,7 +241,7 @@ When enabled:
 See [`docs/cluster-deploy.md`](docs/cluster-deploy.md) for a 3-replica
 walkthrough.
 
-### 3. (Optional) Enable the webhook side-channel
+### 4. (Optional) Enable the webhook side-channel
 
 In `~/.agentscope/dataagent/agentscope.json`:
 
@@ -228,7 +276,7 @@ X-DataAgent-Sig: <HMAC-SHA256 of body, hex>
 Replies are POSTed to `callbackUrl` (same HMAC), or parked for long-poll at
 `GET /api/webhook/ops-webhook/outbound/{inboundId}` when `replyMode=poll`.
 
-### 4. Run
+### 5. Run
 
 ```bash
 java -jar target/agentscope-dataagent-*-exec.jar
@@ -237,6 +285,23 @@ java -jar target/agentscope-dataagent-*-exec.jar
 Open **http://localhost:8080** and log in. The H2 demo seed creates two demo
 accounts: `bob` / `bob` and `alice` / `alice`. The first user with
 `ROLE_ADMIN` is also seeded — check the startup banner.
+
+After login, the application now lands on **`/insights`** by default. Use the
+top-left navigation to move between `Insights`, `Chat`, and `Workspace`.
+
+### 6. Verify the insight-first flow locally
+
+1. Start the app with one registered JDBC source that has the ecommerce
+   semantic mappings.
+2. Wait one refresh interval (`dataagent.insights.refresh-interval`, default
+   `PT1M`) or trigger `InsightRefreshService.refreshNow(...)` from an
+   integration test / local harness.
+3. Open `/insights` and confirm a feed item appears.
+4. Click a feed item and verify the title, summary, conclusion, and evidence
+   snapshot are internally consistent.
+5. Ask a follow-up question in the detail page and confirm the answer stays
+   scoped to the current issue rather than drifting into generic Q&A.
+6. Open `/workspace` and confirm the existing workspace shell still loads.
 
 ---
 
@@ -257,6 +322,9 @@ accounts: `bob` / `bob` and `alice` / `alice`. The first user with
 | `dataagent.session.redis.key-prefix` | `dataagent:session:` | Redis key namespace. |
 | `dataagent.marketplace.enabled` | `true` | Disable to hide the contribution + approval API. |
 | `dataagent.marketplace.max-contribution-bytes` | `1048576` | Max payload accepted by `POST /api/me/contributions`. |
+| `dataagent.data.sources[*]` | `[]` | Registered read-only data sources for toolkit access and insight refresh. JDBC sources should provide the ecommerce semantic mappings (`orders`, `order-items`, `users`, `products`, `refunds`, optional `time-column`). |
+| `dataagent.insights.enabled` | `true` | Enable the background insight refresh loop. |
+| `dataagent.insights.refresh-interval` | `PT1M` | Fixed-rate insight refresh interval. The current implementation clamps anything below one minute back up to one minute. |
 | `server.port` | `8080` | HTTP port. |
 
 User accounts, agents and contributions are persisted to embedded H2 by
@@ -282,13 +350,20 @@ the `jdbc` Spring profile and set `DATAAGENT_DB_URL` / `DATAAGENT_DB_USER`
 |---|---|---|
 | `GET` | `/api/auth/me` | Current user info |
 | `GET` | `/api/me/agent-info` | Metadata for the built-in `data-agent` |
-| `POST` | `/api/chat/stream` | SSE streaming chat (request body: `{ message }`) |
-| `POST` | `/api/chat/send` | Synchronous chat (request body: `{ message }`) |
-| `GET` | `/api/sessions` | List own sessions |
-| `GET` | `/api/sessions/{key}/history` | Session message history |
-| `GET` | `/api/sessions/{key}/turns` | Per-turn transcript |
-| `GET` | `/api/sessions/{key}/tree` | Sub-agent fan-out tree |
-| `POST` | `/api/sessions/{key}/reset` | Reset a session |
+| `POST` | `/api/agents/{agentId}/chat/stream` | SSE streaming chat for the selected agent |
+| `POST` | `/api/agents/{agentId}/chat/send` | Synchronous chat for the selected agent |
+| `GET` | `/api/agents/{agentId}/chat/session` | Resolve or probe the current chat conversation id |
+| `GET` | `/api/agents/{agentId}/sessions/inbox` | List chat sessions for the selected agent |
+| `GET` | `/api/agents/{agentId}/sessions/{key}` | Structured transcript for one conversation |
+| `POST` | `/api/agents/{agentId}/sessions/{key}/reset` | Reset a conversation |
+| `PATCH` | `/api/agents/{agentId}/sessions/{key}/read` | Mark a conversation as read |
+| `DELETE` | `/api/agents/{agentId}/sessions/{key}` | Delete a conversation |
+| `GET` | `/api/agents/{agentId}/insights` | Insight feed for the homepage |
+| `GET` | `/api/agents/{agentId}/insights/{itemId}` | Insight detail projection with evidence snapshots |
+| `POST` | `/api/agents/{agentId}/insights/{itemId}/chat/send` | Issue-scoped synchronous follow-up chat |
+| `GET` | `/api/agents/{agentId}/workspace` | Workspace summary for the selected agent |
+| `GET` | `/api/agents/{agentId}/workspace/files` | Workspace tree |
+| `GET` | `/api/agents/{agentId}/workspace/file` | Read one workspace file |
 | `GET` `POST` | `/api/me/agents` | List / create per-user data agents |
 | `GET` `POST` | `/api/me/agents/{id}/skills` | List / write a skill in your workspace |
 | `GET` `POST` | `/api/me/agents/{id}/tools` | List / register custom tools |
@@ -312,6 +387,28 @@ the `jdbc` Spring profile and set `DATAAGENT_DB_URL` / `DATAAGENT_DB_USER`
 | `GET` | `/api/admin/config/agentscope` | Raw `agentscope.json` |
 | `GET` | `/api/admin/channels/{channelId}/bindings` | Routing bindings for a channel |
 | `GET` | `/api/admin/usage/...` | Usage rollups (per-user / per-agent / hourly / daily) |
+
+---
+
+## First-version limits
+
+- Insight detection currently compares **fixed 24-hour windows** against the
+  immediately previous 24-hour window. The window is not yet user-configurable.
+- The first version assumes a **registered JDBC source + ecommerce five-table
+  semantic mapping**. Arbitrary schema understanding is intentionally out of
+  scope.
+- Detector logic is still **local and deterministic**; the model is used for
+  narrative expression and follow-up answering, not for primary anomaly
+  detection.
+- Scoped follow-up chat is currently implemented on the synchronous
+  `/insights/{itemId}/chat/send` path. The global `/chat` route remains
+  available alongside the issue-scoped flow.
+
+### Planned tightening
+
+- Make the insight comparison window configurable instead of fixed at 24h.
+- Tighten the boundary so anomaly computation remains fully local while the
+  model is used only to express and explain already-computed results.
 
 ---
 

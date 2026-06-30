@@ -11,13 +11,13 @@ export default function BackToChatHeader({ title, subtitle }: BackToChatHeaderPr
   return (
     <div style={S.root}>
       <button
-        onClick={() => navigate('/chat')}
+        onClick={() => navigate('/insights')}
         style={S.backBtn}
         onMouseEnter={e => { e.currentTarget.style.background = '#eef2ff'; e.currentTarget.style.color = '#3730a3'; }}
         onMouseLeave={e => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.color = '#475569'; }}
-        title="Return to chat"
+        title="Return to insight feed"
       >
-        ← 返回 Chat
+        ← 返回洞察流
       </button>
       <div style={S.titleBlock}>
         <span style={S.title}>{title}</span>

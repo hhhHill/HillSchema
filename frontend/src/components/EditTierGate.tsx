@@ -12,7 +12,7 @@ export interface ShellOutletContext {
 /**
  * Route guard: only allows children to render when the current user has EDIT tier on the
  * active data agent. While the agent is still loading, shows a placeholder; on insufficient
- * tier, redirects back to /chat.
+ * tier, redirects back to /insights.
  */
 export default function EditTierGate({ children }: { children: React.ReactElement }) {
   const ctx = useOutletContext<ShellOutletContext>();
@@ -23,7 +23,7 @@ export default function EditTierGate({ children }: { children: React.ReactElemen
     return <div style={{ padding: 32, color: '#dc2626' }}>{ctx.agentError}</div>;
   }
   if (ctx.agent?.tierForCurrentUser !== 'EDIT') {
-    return <Navigate to="/chat" replace />;
+    return <Navigate to="/insights" replace />;
   }
   return children;
 }

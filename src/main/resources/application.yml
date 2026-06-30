@@ -141,14 +141,26 @@ dataagent:
   # Stage 2 of HillSchema uses this list to expose read-only sources to the
   # agent runtime. Each source should define jdbc-url / driver-class-name /
   # username / password plus optional semantic.* mappings for the ecommerce
-  # five-table model. Leave empty to disable data-source access.
+  # five-table model:
+  #   semantic.orders
+  #   semantic.order-items
+  #   semantic.users
+  #   semantic.products
+  #   semantic.refunds
+  #   semantic.time-column   (optional, defaults to created_at)
+  #
+  # Leave empty to disable data-source access and keep the insight scheduler
+  # idle. The first version intentionally does not attempt arbitrary schema
+  # understanding beyond these registered mappings.
   data:
     sources: []
 
   # ---- HillSchema insight pipeline ----
   # The automatic insight refresh loop is enabled by default and scans the
   # registered JDBC sources every minute. When no sources are configured, the
-  # scheduler stays idle without failing application startup.
+  # scheduler stays idle without failing application startup. Detection is
+  # currently based on fixed 24h vs previous 24h comparisons; the time window
+  # is not yet user-configurable.
   insights:
     enabled: true
     refresh-interval: PT1M

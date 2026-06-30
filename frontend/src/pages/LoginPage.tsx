@@ -66,7 +66,7 @@ export default function LoginPage() {
     try {
       const res = await login(username, password);
       saveToken(res.token);
-      navigate('/chat', { replace: true });
+      navigate('/insights', { replace: true });
     } catch {
       setError('Invalid username or password');
     } finally {

@@ -10,6 +10,18 @@ interface UtilityItem {
   icon: string;
 }
 
+interface PrimaryNavItem {
+  label: string;
+  path: string;
+  icon: string;
+}
+
+const PRIMARY_NAV_ITEMS: PrimaryNavItem[] = [
+  { label: 'Insights', path: '/insights', icon: '◎' },
+  { label: 'Chat', path: '/chat', icon: '💬' },
+  { label: 'Workspace', path: '/workspace', icon: '📁' },
+];
+
 const UTILITY_ITEMS: UtilityItem[] = [
   { label: 'Profile', path: '/profile', icon: '👤' },
   { label: 'Appearance', path: '/appearance', icon: '🎨' },
@@ -68,6 +80,7 @@ export default function SessionsSidebar({ refreshKey }: SessionsSidebarProps) {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const activeKey = searchParams.get('session');
+  const isChatRoute = location.pathname === '/chat';
 
   const [entries, setEntries] = useState<InboxEntry[]>([]);
   const [err, setErr] = useState<string | null>(null);
@@ -76,13 +89,17 @@ export default function SessionsSidebar({ refreshKey }: SessionsSidebarProps) {
   useEffect(() => {
     let cancelled = false;
     setErr(null);
+    if (!isChatRoute) {
+      setLoading(false);
+      return () => { cancelled = true; };
+    }
     setLoading(true);
     inbox(ACTIVE_AGENT_ID, { limit: 100 })
       .then(list => { if (!cancelled) setEntries(list); })
       .catch(e => { if (!cancelled) setErr(e instanceof Error ? e.message : 'Failed'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [refreshKey]);
+  }, [isChatRoute, refreshKey]);
 
   // When the user just clicked 新建对话 the URL carries the freshly-minted conversationId, but
   // no SessionEntry exists on the server yet (it is created on the first message). Surface a
@@ -149,39 +166,76 @@ export default function SessionsSidebar({ refreshKey }: SessionsSidebarProps) {
   return (
     <div style={S.root}>
       <div style={S.headerRow}>
-        <button onClick={handleNewChat} style={S.newBtn}>
-          <span style={{ fontSize: '1rem' }}>＋</span> 新建对话
-        </button>
+        <div style={S.primaryNav}>
+          {PRIMARY_NAV_ITEMS.map(item => {
+            const active = location.pathname === item.path;
+            return (
+              <button
+                key={item.path}
+                onClick={() => navigate(item.path)}
+                style={{
+                  ...S.primaryNavBtn,
+                  ...(active ? S.primaryNavBtnActive : {}),
+                }}
+              >
+                <span>{item.icon}</span>
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+        {isChatRoute && (
+          <button onClick={handleNewChat} style={S.newBtn}>
+            <span style={{ fontSize: '1rem' }}>＋</span> 新建对话
+          </button>
+        )}
       </div>
 
       <div style={S.scroll}>
-        {loading && <div style={S.muted}>Loading…</div>}
-        {err && <div style={S.error}>{err}</div>}
-        {!loading && !err && entries.length === 0 && !draftEntry && (
-          <div style={S.muted}>暂无会话。发送消息即可开始第一段对话。</div>
+        {!isChatRoute && (
+          <div style={S.helperCard}>
+            <div style={S.helperTitle}>
+              {location.pathname === '/insights' ? '洞察优先入口' : '应用导航'}
+            </div>
+            <div style={S.helperText}>
+              {location.pathname === '/insights'
+                ? '主区域会持续展示已经生成好的问题消息。点击卡片查看静态结论和证据快照。'
+                : '当前页面仍然可用。需要回到首页时，优先从左上角进入 Insights。'}
+            </div>
+          </div>
         )}
 
-        {(['today', 'yesterday', 'earlier'] as Bucket[]).map(b => {
-          const list = grouped[b];
-          if (list.length === 0) return null;
-          return (
-            <div key={b} style={S.group}>
-              <div style={S.groupLabel}>{BUCKET_LABEL[b]}</div>
-              {list.map(e => {
-                const isActive = entryNavKey(e) === activeKey && location.pathname === '/chat';
-                return (
-                  <SessionRow
-                    key={e.sessionKey}
-                    entry={e}
-                    active={isActive}
-                    onOpen={() => openSession(e)}
-                    onDelete={ev => handleDelete(e, ev)}
-                  />
-                );
-              })}
-            </div>
-          );
-        })}
+        {isChatRoute && (
+          <>
+            {loading && <div style={S.muted}>Loading…</div>}
+            {err && <div style={S.error}>{err}</div>}
+            {!loading && !err && entries.length === 0 && !draftEntry && (
+              <div style={S.muted}>暂无会话。发送消息即可开始第一段对话。</div>
+            )}
+
+            {(['today', 'yesterday', 'earlier'] as Bucket[]).map(b => {
+              const list = grouped[b];
+              if (list.length === 0) return null;
+              return (
+                <div key={b} style={S.group}>
+                  <div style={S.groupLabel}>{BUCKET_LABEL[b]}</div>
+                  {list.map(e => {
+                    const isActive = entryNavKey(e) === activeKey && location.pathname === '/chat';
+                    return (
+                      <SessionRow
+                        key={e.sessionKey}
+                        entry={e}
+                        active={isActive}
+                        onOpen={() => openSession(e)}
+                        onDelete={ev => handleDelete(e, ev)}
+                      />
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </>
+        )}
       </div>
 
       <div style={S.footer}>
@@ -358,6 +412,19 @@ const S: Record<string, React.CSSProperties> = {
   },
   headerRow: {
     padding: '14px 14px 10px', borderBottom: '1px solid #f1f5f9', flexShrink: 0,
+    display: 'flex', flexDirection: 'column', gap: 10,
+  },
+  primaryNav: {
+    display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8,
+  },
+  primaryNavBtn: {
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+    background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569',
+    borderRadius: 10, padding: '9px 8px', cursor: 'pointer',
+    fontSize: '0.8rem', fontWeight: 600,
+  },
+  primaryNavBtnActive: {
+    background: '#eef2ff', borderColor: '#c7d2fe', color: '#3730a3',
   },
   newBtn: {
     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%',
@@ -370,6 +437,17 @@ const S: Record<string, React.CSSProperties> = {
   scroll: { flex: 1, overflowY: 'auto', padding: '10px 8px 16px' },
   muted: { padding: '8px 12px', fontSize: '0.85rem', color: '#94a3b8' },
   error: { padding: '8px 12px', fontSize: '0.85rem', color: '#dc2626' },
+  helperCard: {
+    padding: '14px 14px 16px', borderRadius: 14,
+    border: '1px solid #dbe4ff', background: 'linear-gradient(180deg,#eef2ff 0%,#ffffff 100%)',
+  },
+  helperTitle: {
+    fontSize: '0.78rem', fontWeight: 800, letterSpacing: '0.12em',
+    textTransform: 'uppercase', color: '#4338ca', marginBottom: 8,
+  },
+  helperText: {
+    fontSize: '0.86rem', color: '#475569', lineHeight: 1.65,
+  },
   group: { marginBottom: 14 },
   groupLabel: {
     fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.1em',
