@@ -69,17 +69,15 @@ public class MarketContributionService {
 
     private final ContributionRepository repository;
     private final UserSandboxRegistry sandboxRegistry;
-    private final ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
     private final Path sharedRoot;
 
     public MarketContributionService(
             ContributionRepository repository,
             DataAgentBootstrap bootstrap,
-            UserSandboxRegistry sandboxRegistry,
-            ObjectMapper objectMapper) {
+            UserSandboxRegistry sandboxRegistry) {
         this.repository = Objects.requireNonNull(repository, "repository");
         this.sandboxRegistry = Objects.requireNonNull(sandboxRegistry, "sandboxRegistry");
-        this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
         this.sharedRoot = bootstrap.cwd().resolve("shared");
     }
 

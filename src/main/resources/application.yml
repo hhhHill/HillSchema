@@ -92,7 +92,7 @@ dataagent:
   # ---- DashScope model (used when no Model Spring bean is present) ----
   # Set DASHSCOPE_API_KEY env var or override api-key below.
   dashscope:
-    api-key: ${DASHSCOPE_API_KEY:}
+    api-key: ${DASHSCOPE_API_KEY:sk-ws-H.RXDPEII.8ZeF.MEUCIQCkxCMyHjzdN7h2a7KhYkjAIVMnBmg_xI970Xl0FMYzCwIgWVydX4Bna527lKeoSRl_a0zUcBuCrxZmAFjC9aUoawk}
     model-name: ${DATAAGENT_MODEL_NAME:qwen-max}
     stream: true
 

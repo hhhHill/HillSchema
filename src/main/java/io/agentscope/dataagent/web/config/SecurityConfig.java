@@ -52,7 +52,7 @@ import reactor.core.publisher.Mono;
  *
  * <p>JWT validation is performed by the {@link JwtAuthFilter} which is registered before the
  * security filter chain. CORS is configured to allow the Vite dev server ({@code
- * http://localhost:5173}) in addition to same-origin requests.
+ * http://localhost:5174}) in addition to same-origin requests.
  */
 @Configuration
 @EnableWebFluxSecurity

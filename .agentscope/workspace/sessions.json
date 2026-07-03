@@ -1,0 +1,17 @@
+{
+  "agent:1efc74c9-2f48-4260-bd7f-79faa00810eb:main:main-6f2369c0-f161-42e0-aba6-df49a42650a8" : {
+    "sessionKey" : "agent:1efc74c9-2f48-4260-bd7f-79faa00810eb:main:main-6f2369c0-f161-42e0-aba6-df49a42650a8",
+    "agentId" : "1efc74c9-2f48-4260-bd7f-79faa00810eb",
+    "sessionId" : "main-6f2369c0-f161-42e0-aba6-df49a42650a8",
+    "label" : null,
+    "kind" : "main",
+    "spawnedBy" : null,
+    "spawnDepth" : 0,
+    "createdAtMs" : 1782815231281,
+    "lastActivityMs" : 1782815231281,
+    "sessionFilePath" : "D:\\HillSchema\\.agentscope\\workspace\\agents\\1efc74c9-2f48-4260-bd7f-79faa00810eb\\sessions\\main-6f2369c0-f161-42e0-aba6-df49a42650a8.json",
+    "spawnRunId" : null,
+    "gateKey" : "chatui|x:agentId=data-agent",
+    "userId" : "bob"
+  }
+}

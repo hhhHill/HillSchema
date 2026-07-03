@@ -24,6 +24,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 class DataToolkitJdbcIntegrationTest {
@@ -61,6 +63,22 @@ class DataToolkitJdbcIntegrationTest {
             assertThat(registry.list().get(0).properties())
                     .containsEntry("semantic.orders", "orders")
                     .containsEntry("semantic.users", "users");
+        });
+    }
+
+    @Test
+    void autowiringJdbcResolverWorksForDefaultPropertyBackedRegistry() {
+        contextRunner.withUserConfiguration(JdbcResolverConsumerConfig.class).run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context).hasSingleBean(JdbcResolverConsumer.class);
+        });
+    }
+
+    @Test
+    void autowiringDataSourceRegistryRemainsUnambiguousWhenJdbcResolverBeanIsExposed() {
+        contextRunner.withUserConfiguration(DataSourceRegistryConsumerConfig.class).run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context).hasSingleBean(DataSourceRegistryConsumer.class);
         });
     }
 
@@ -176,5 +194,49 @@ class DataToolkitJdbcIntegrationTest {
                     """);
         }
         return jdbcUrl;
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    static class JdbcResolverConsumerConfig {
+
+        @Bean
+        JdbcResolverConsumer jdbcResolverConsumer(JdbcDataSourceResolver resolver) {
+            return new JdbcResolverConsumer(resolver);
+        }
+    }
+
+    static final class JdbcResolverConsumer {
+
+        private final JdbcDataSourceResolver resolver;
+
+        JdbcResolverConsumer(JdbcDataSourceResolver resolver) {
+            this.resolver = resolver;
+        }
+
+        JdbcDataSourceResolver resolver() {
+            return resolver;
+        }
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    static class DataSourceRegistryConsumerConfig {
+
+        @Bean
+        DataSourceRegistryConsumer dataSourceRegistryConsumer(DataSourceRegistry registry) {
+            return new DataSourceRegistryConsumer(registry);
+        }
+    }
+
+    static final class DataSourceRegistryConsumer {
+
+        private final DataSourceRegistry registry;
+
+        DataSourceRegistryConsumer(DataSourceRegistry registry) {
+            this.registry = registry;
+        }
+
+        DataSourceRegistry registry() {
+            return registry;
+        }
     }
 }

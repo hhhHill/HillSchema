@@ -21,7 +21,7 @@ import java.nio.file.Path;
 
 /**
  * Writes the LangSmith-Fleet-style workspace folder layout that the builder UI edits: {@code
- * AGENTS.md}, {@code tools.json}, an example skill, and {@code subagents/}/{@code memory/}
+ * AGENTS.md}, {@code tools.json}, a skills README, and {@code subagents/}/{@code memory/}
  * directories. Existing files are left untouched, so calling this on a populated workspace is a
  * no-op for whatever is already there.
  *
@@ -49,9 +49,7 @@ public final class WorkspaceScaffolder {
 
         writeIfMissing(workspace.resolve("AGENTS.md"), agentsMd(displayName, sysPrompt));
         writeIfMissing(workspace.resolve("tools.json"), toolsJson());
-        writeIfMissing(
-                workspace.resolve("skills").resolve("example-skill").resolve("SKILL.md"),
-                exampleSkillMd());
+        writeIfMissing(workspace.resolve("skills").resolve("README.md"), skillsReadme());
         writeIfMissing(workspace.resolve("subagents").resolve("README.md"), subagentsReadme());
         writeIfMissing(workspace.resolve("memory").resolve(".gitkeep"), "");
     }
@@ -83,7 +81,8 @@ public final class WorkspaceScaffolder {
         - **`tools.json`** — declare which built-in tools the agent may call. See the
           generated file for the available tool ids and an `allow` / `deny` example.
         - **`skills/`** — each subfolder is a skill: a Markdown playbook the agent can
-          invoke by name. A starter `example-skill/SKILL.md` is included.
+          invoke by name. A `skills/README.md` starter note is included, but it is not
+          loaded as a runtime skill.
         - **`subagents/`** — sub-agent definitions for delegated work. See
           `subagents/README.md`.
         - **`memory/`** — long-term memory store managed by the runtime; you usually do
@@ -117,26 +116,33 @@ public final class WorkspaceScaffolder {
         """;
     }
 
-    private static String exampleSkillMd() {
+    private static String skillsReadme() {
         return """
-        # Example Skill
+        # Skills
 
-        A skill is a named playbook the agent can invoke by referring to this file. The
-        folder name (`example-skill`) is the skill id.
+        Put real skills in subfolders under this directory. Each skill folder should
+        contain a `SKILL.md` file that the runtime can load.
 
-        ## When to use
+        Example layout:
 
-        Describe the situations in which the agent should reach for this skill. Be
-        concrete — the runtime feeds this section back to the agent when it is selecting
-        between skills.
+        ```text
+        skills/
+          my-skill/
+            SKILL.md
+        ```
 
-        ## Steps
+        `README.md` is only documentation. It is not loaded as a runtime skill, so you
+        can keep notes here safely.
 
-        1. State the inputs the skill needs.
-        2. Describe the work — what files to read, what to write, what to summarize.
-        3. State the expected output format.
+        When you create a real skill, add YAML front matter to `SKILL.md`, including at
+        least:
 
-        Delete this file once you have authored your own skills.
+        ```markdown
+        ---
+        name: my-skill
+        description: What this skill is for.
+        ---
+        ```
         """;
     }
 

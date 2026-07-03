@@ -32,7 +32,8 @@ class WorkspaceScaffolderTest {
 
         assertThat(tmp.resolve("AGENTS.md")).exists();
         assertThat(tmp.resolve("tools.json")).exists();
-        assertThat(tmp.resolve("skills/example-skill/SKILL.md")).exists();
+        assertThat(tmp.resolve("skills/README.md")).exists();
+        assertThat(tmp.resolve("skills/example-skill/SKILL.md")).doesNotExist();
         assertThat(tmp.resolve("subagents/README.md")).exists();
         assertThat(tmp.resolve("memory")).isDirectory();
 
@@ -45,6 +46,10 @@ class WorkspaceScaffolderTest {
         String toolsJson = Files.readString(tmp.resolve("tools.json"));
         assertThat(toolsJson).contains("\"allow\"");
         assertThat(toolsJson).contains("read_file");
+
+        String skillsReadme = Files.readString(tmp.resolve("skills/README.md"));
+        assertThat(skillsReadme).contains("# Skills");
+        assertThat(skillsReadme).contains("not loaded as a runtime skill");
     }
 
     @Test

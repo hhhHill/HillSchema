@@ -15,6 +15,8 @@
  */
 package io.agentscope.dataagent.web.config;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.model.DashScopeChatModel;
 import io.agentscope.core.model.Model;
 import io.agentscope.core.state.AgentStateStore;
@@ -125,6 +127,14 @@ public class DataAgentConfig {
     //  property is blank so Optional<Model> injection sites receive
     //  Optional.empty().
     // -----------------------------------------------------------------
+
+    @Bean
+    @ConditionalOnMissingBean(ObjectMapper.class)
+    public ObjectMapper objectMapper() {
+        return new ObjectMapper()
+                .findAndRegisterModules()
+                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    }
 
     /**
      * Creates a {@link DashScopeChatModel} bean when {@code dataagent.dashscope.api-key} is

@@ -19,7 +19,6 @@ interface PrimaryNavItem {
 const PRIMARY_NAV_ITEMS: PrimaryNavItem[] = [
   { label: 'Insights', path: '/insights', icon: '◎' },
   { label: 'Chat', path: '/chat', icon: '💬' },
-  { label: 'Workspace', path: '/workspace', icon: '📁' },
 ];
 
 const UTILITY_ITEMS: UtilityItem[] = [

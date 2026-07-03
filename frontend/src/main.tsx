@@ -8,7 +8,6 @@ import EditTierGate from './components/EditTierGate';
 
 import ChatPage from './pages/ChatPage';
 import InsightsPage from './pages/InsightsPage';
-import WorkspacePage from './pages/WorkspacePage';
 import SkillsPage from './pages/configure/SkillsPage';
 import SubagentsPage from './pages/configure/SubagentsPage';
 import ChannelsPage from './pages/configure/ChannelsPage';
@@ -73,9 +72,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 
           {/* Primary chat surface */}
           <Route path="/chat" element={<ChatPage />} />
-
-          {/* Workspace browser (RUN-tier read-only allowed) */}
-          <Route path="/workspace" element={<WorkspacePage />} />
 
           {/* Configuration pages — EDIT tier only */}
           <Route path="/configure/skills"    element={<EditTierGate><SkillsPage /></EditTierGate>} />

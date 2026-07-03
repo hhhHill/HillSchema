@@ -60,15 +60,6 @@ export default function ChatHeader({ agent }: ChatHeaderProps) {
             <span>{b.icon}</span> {b.label}
           </button>
         ))}
-        <button
-          onClick={() => navigate('/workspace')}
-          style={S.btn}
-          onMouseEnter={e => { e.currentTarget.style.background = '#eef2ff'; e.currentTarget.style.color = '#3730a3'; }}
-          onMouseLeave={e => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.color = '#475569'; }}
-          title="Browse workspace files"
-        >
-          <span>📁</span> Workspace
-        </button>
       </div>
     </div>
   );

@@ -47,11 +47,22 @@ public class DataToolkitConfig {
 
     @Bean
     @ConditionalOnMissingBean(DataSourceRegistry.class)
-    public DataSourceRegistry jdbcConfiguredDataSourceRegistry(DataToolkitProperties properties) {
+    public JdbcConfiguredDataSourceRegistry jdbcConfiguredDataSourceRegistry(
+            DataToolkitProperties properties) {
         log.info(
                 "DataToolkitConfig: no DataSourceRegistry bean found, using property-backed"
                         + " JdbcConfiguredDataSourceRegistry");
         return new JdbcConfiguredDataSourceRegistry(properties);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(JdbcDataSourceResolver.class)
+    public JdbcDataSourceResolver jdbcDataSourceResolver(DataSourceRegistry registry) {
+        if (registry instanceof JdbcDataSourceResolver resolver) {
+            return resolver;
+        }
+        throw new IllegalStateException(
+                "Configured DataSourceRegistry does not implement JdbcDataSourceResolver");
     }
 
     @Bean
