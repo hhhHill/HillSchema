@@ -82,16 +82,16 @@ public class InsightChatController {
         }
 
         String gatewayAgentId = catalogService.resolveGatewayAgentId(userId, agentId);
-        Msg systemMsg = Msg.builder().role(MsgRole.SYSTEM).textContent(scopedContext).build();
-        Msg userMsg = Msg.builder().role(MsgRole.USER).textContent(message).build();
+        Msg userMsg = Msg.builder().role(MsgRole.USER).textContent(scopedContext).build();
 
         InboundMessage inbound =
                 InboundMessage.builder(
                                 ChatUiChannel.CHANNEL_ID,
-                                Peer.direct(userId),
-                                List.of(systemMsg, userMsg))
+                                Peer.thread(scopedConversationId(itemId, resolvedConversationId)),
+                                List.of(userMsg))
+                        .parentPeer(Peer.direct(userId))
+                        .senderId(userId)
                         .preferredAgentId(gatewayAgentId)
-                        .accountId(scopedConversationId(itemId, resolvedConversationId))
                         .build();
 
         return chatUiChannel

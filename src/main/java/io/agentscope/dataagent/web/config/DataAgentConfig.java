@@ -29,14 +29,11 @@ import io.agentscope.dataagent.runtime.marketplace.NacosDataAgentMarketplace;
 import io.agentscope.dataagent.runtime.marketplace.UserMarketplaceRegistry.DataAgentMarketplaceFactoryRegistration;
 import io.agentscope.dataagent.web.toolbus.ToolEventBus;
 import io.agentscope.dataagent.web.toolbus.ToolNotificationMiddleware;
-import io.agentscope.dataagent.web.workspace.UserSandboxRegistry;
 import io.agentscope.harness.agent.IsolationScope;
+import io.agentscope.harness.agent.filesystem.spec.LocalFilesystemSpec;
 import io.agentscope.harness.agent.gateway.channel.ChannelConfig;
 import io.agentscope.harness.agent.gateway.channel.DmScope;
 import io.agentscope.harness.agent.gateway.channel.chatui.ChatUiChannel;
-import io.agentscope.harness.agent.sandbox.SandboxClient;
-import io.agentscope.harness.agent.sandbox.impl.docker.DockerFilesystemSpec;
-import io.agentscope.harness.agent.sandbox.impl.docker.DockerSandboxClientOptions;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -63,18 +60,9 @@ import org.springframework.context.annotation.Configuration;
  *
  * <h2>Filesystem topology</h2>
  *
- * <p>DataAgent is a multi-tenant deployable. Every {@link
- * io.agentscope.harness.agent.HarnessAgent} runs against a per-{@code (userId, agentId)} live
- * Docker sandbox owned by {@link UserSandboxRegistry}: the {@link
- * io.agentscope.dataagent.runtime.gateway.HarnessGateway} attaches that sandbox to the
- * {@link io.agentscope.core.agent.RuntimeContext} as a {@link
- * io.agentscope.harness.agent.sandbox.SandboxContext#getExternalSandbox() external sandbox} per
- * call, so the harness takes its Priority-1 acquire path and the agent reads/writes through the
- * exact same container the browser workspace controllers use.
- *
- * <p>Multi-replica deployments must front the app with sticky load-balancing by {@code userId} —
- * the registry is in-memory only, and two pods would otherwise spin up independent containers
- * for the same user.
+ * <p>DataAgent is currently wired for a local-only downgrade. Each agent uses a local filesystem
+ * spec, and browser-side workspace isolation is handled by per-user workspace directories rather
+ * than Docker sandboxes.
  *
  * <h2>Model wiring (priority order)</h2>
  *
@@ -163,26 +151,13 @@ public class DataAgentConfig {
      * Assembles the {@link DataAgentBootstrap}, loading agent config from {@code agentscope.json}
      * and starting the {@link ChatUiChannel} for per-user isolated sessions.
      *
-     * <p>Every agent built by the bootstrap declares a {@link DockerFilesystemSpec} (per-user
-     * isolation scope) sharing the same {@link SandboxClient} used by {@link UserSandboxRegistry}.
-     * The actual container per turn is supplied by the gateway via
-     * {@link io.agentscope.harness.agent.sandbox.SandboxContext#getExternalSandbox()} — see
-     * {@link io.agentscope.dataagent.runtime.gateway.HarnessGateway#setUserSandboxRegistry}.
-     *
      * @param modelOpt the {@link Model} to use, or empty if none is configured
      * @param toolEventBus the shared tool-event bus for real-time SSE streaming of tool calls
-     * @param sandboxClient client used by every {@link DockerFilesystemSpec} (same instance the
-     *     {@link UserSandboxRegistry} uses, so spec-defaults and registry-managed sandboxes share
-     *     one Docker store)
-     * @param userSandboxRegistry registry attached to the gateway after bootstrap so per-call
-     *     turns receive the right per-user sandbox
      */
     @Bean
     public DataAgentBootstrap builderBootstrap(
             Optional<Model> modelOpt,
             ToolEventBus toolEventBus,
-            SandboxClient<DockerSandboxClientOptions> sandboxClient,
-            UserSandboxRegistry userSandboxRegistry,
             Optional<AgentStateStore> sessionOpt)
             throws IOException {
         Path cwd = resolveCwd();
@@ -199,12 +174,9 @@ public class DataAgentConfig {
                             + " available.");
         }
 
-        // AgentStateStore backend selection is independent of the workspace filesystem now that
-        // workspaces
-        // are sandbox-backed: each user's sandbox is reached through the in-memory
-        // UserSandboxRegistry under sticky load-balancing. Operators should still provide a
-        // distributed AgentStateStore bean for production so conversation state survives pod
-        // restarts.
+        // Conversation persistence is independent of the local workspace filesystem. Operators
+        // should still provide a distributed AgentStateStore bean for production so conversation
+        // state survives process restarts.
         AgentStateStore stateStore = sessionOpt.orElseGet(InMemoryAgentStateStore::new);
         if (sessionOpt.isEmpty()) {
             log.warn(
@@ -220,18 +192,14 @@ public class DataAgentConfig {
                     b.middleware(new ToolNotificationMiddleware(toolEventBus));
                     b.stateStore(stateStore);
                     b.filesystem(
-                            new DockerFilesystemSpec()
-                                    .client(sandboxClient)
-                                    .isolationScope(IsolationScope.USER));
+                            new LocalFilesystemSpec()
+                                    .isolationScope(IsolationScope.USER)
+                                    .projectWritable(true)
+                                    .virtualMode(false));
+                    b.disableShellTool();
                 });
 
         DataAgentBootstrap bootstrap = builder.build();
-
-        // Hand the gateway a reference to the per-user sandbox registry so every run(...) turn
-        // injects the user's live container as SandboxContext.externalSandbox (Priority-1 acquire
-        // in SandboxManager). The gateway is constructed inside DataAgentBootstrap, which lives
-        // below the web layer and cannot depend on UserSandboxRegistry directly.
-        bootstrap.gateway().setUserSandboxRegistry(userSandboxRegistry);
 
         // Build the chatui channel using the file-config's bindings & dmScope (if any),
         // so admin-edited bindings in agentscope.json are honored. Falls back to PER_PEER
@@ -263,11 +231,9 @@ public class DataAgentConfig {
      * contributions on disk.
      *
      * <p>The factory reads from {@code ${dataagent.shared-root}/agents/data-agent/skills} — the
-     * per-agent slice for the built-in {@code data-agent}, which is the same directory the
-     * per-(user, data-agent) sandbox projects in as its lower layer, so an approved skill is
-     * immediately visible to every tenant of {@code data-agent} without extra wiring. Skills
-     * approved for other agents live under their own {@code shared/agents/<agentId>/skills/}
-     * slices and surface through those agents' own overlays; this local marketplace does not
+     * per-agent slice for the built-in {@code data-agent}. Approved skills become visible to that
+     * agent's local workspaces without extra wiring. Skills approved for other agents live under
+     * their own {@code shared/agents/<agentId>/skills/} slices; this local marketplace does not
      * cross-list them.
      */
     @Bean
@@ -382,10 +348,9 @@ public class DataAgentConfig {
      * fall through to {@link DataAgentBootstrap#DEFAULT_WORKSPACE_ROOT} for the workspace
      * location.
      *
-     * <p>The workspace root is the read-only shared seed (template content, default {@code
-     * AGENTS.md} / {@code skills/} / {@code subagents/} / {@code knowledge/} shipped on disk).
-     * {@link UserSandboxRegistry} projects it into every fresh container; user-writable files
-     * live inside the container.
+     * <p>The workspace root is the shared seed (template content, default {@code AGENTS.md} /
+     * {@code skills/} / {@code subagents/} / {@code knowledge/} shipped on disk). Per-user local
+     * workspaces are created from this seed on demand.
      */
     private void ensureAgentscopeConfig() throws IOException {
         Path configFile = DataAgentBootstrap.DEFAULT_CONFIG_PATH;

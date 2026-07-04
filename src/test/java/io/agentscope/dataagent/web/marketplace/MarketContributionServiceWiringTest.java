@@ -19,7 +19,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.agentscope.dataagent.runtime.DataAgentBootstrap;
 import io.agentscope.dataagent.web.persistence.jpa.ContributionRepository;
-import io.agentscope.dataagent.web.workspace.UserSandboxRegistry;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -56,16 +55,9 @@ class MarketContributionServiceWiringTest {
         }
 
         @Bean
-        UserSandboxRegistry userSandboxRegistry() {
-            return Mockito.mock(UserSandboxRegistry.class);
-        }
-
-        @Bean
         MarketContributionService marketContributionService(
-                ContributionRepository repository,
-                DataAgentBootstrap bootstrap,
-                UserSandboxRegistry sandboxRegistry) {
-            return new MarketContributionService(repository, bootstrap, sandboxRegistry);
+                ContributionRepository repository, DataAgentBootstrap bootstrap) {
+            return new MarketContributionService(repository, bootstrap);
         }
     }
 }

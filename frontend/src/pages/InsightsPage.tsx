@@ -118,10 +118,10 @@ export default function InsightsPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }}>
             <div style={{ maxWidth: 820 }}>
               <div style={{ fontSize: '0.78rem', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#c7d2fe', fontWeight: 800 }}>
-                Insight Feed
+                问题列表
               </div>
               <h1 style={{ margin: '12px 0 0', fontSize: '2.2rem', lineHeight: 1.05, letterSpacing: '-0.03em' }}>
-                先看问题流，再决定下一步要问什么
+                先看现成结论，再决定要不要继续追问
               </h1>
               <p style={{ margin: '16px 0 0', maxWidth: 760, color: '#cbd5e1', fontSize: '0.98rem', lineHeight: 1.75 }}>
                 {subtitle}
@@ -130,10 +130,7 @@ export default function InsightsPage() {
 
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
               <button type="button" onClick={() => navigate('/chat')} style={actionButton}>
-                打开 Chat
-              </button>
-              <button type="button" onClick={() => navigate('/workspace')} style={secondaryActionButton}>
-                Workspace
+                进入 Chat
               </button>
             </div>
           </div>
@@ -150,10 +147,10 @@ export default function InsightsPage() {
           <div style={{ flex: '0 0 360px', minWidth: 320, maxWidth: 420 }}>
             <div style={{ marginBottom: 12, padding: '0 6px' }}>
               <div style={{ fontSize: '0.78rem', letterSpacing: '0.14em', textTransform: 'uppercase', color: '#64748b', fontWeight: 800 }}>
-                最近问题流
+                最近问题
               </div>
               <div style={{ marginTop: 6, fontSize: '0.9rem', color: '#475569', lineHeight: 1.65 }}>
-                首页只展示已经生成好的问题消息，点击后查看静态结论和证据快照。
+                首页先展示已生成的问题和结论。点击卡片查看结论和证据。
               </div>
             </div>
             <InsightFeedList
@@ -190,14 +187,3 @@ const actionButton: React.CSSProperties = {
   boxShadow: '0 12px 30px rgba(15,23,42,0.14)',
 };
 
-const secondaryActionButton: React.CSSProperties = {
-  border: '1px solid rgba(255,255,255,0.22)',
-  background: 'rgba(255,255,255,0.10)',
-  color: '#f8fafc',
-  borderRadius: 999,
-  padding: '12px 18px',
-  fontSize: '0.9rem',
-  fontWeight: 700,
-  cursor: 'pointer',
-  backdropFilter: 'blur(10px)',
-};

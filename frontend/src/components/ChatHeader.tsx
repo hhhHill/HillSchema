@@ -44,9 +44,9 @@ export default function ChatHeader({ agent }: ChatHeaderProps) {
           style={S.btn}
           onMouseEnter={e => { e.currentTarget.style.background = '#eef2ff'; e.currentTarget.style.color = '#3730a3'; }}
           onMouseLeave={e => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.color = '#475569'; }}
-          title="Review the insight feed"
+          title="查看问题列表"
         >
-          <span>🧭</span> Insights
+          <span>🧭</span> 问题
         </button>
         {canEdit && CONFIG_BUTTONS.map(b => (
           <button

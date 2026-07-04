@@ -361,10 +361,7 @@ public class ChatController {
         try {
             String gatewayAgentId = catalogService.resolveGatewayAgentId(userId, agentId);
             InboundMessage probe =
-                    InboundMessage.builder(ChatUiChannel.CHANNEL_ID, Peer.direct(userId), List.of())
-                            .preferredAgentId(gatewayAgentId)
-                            .accountId(conversationId)
-                            .build();
+                    routedInboundMessage(userId, gatewayAgentId, List.of(), conversationId);
             return chatUiChannel.previewRoute(probe).context().canonicalKey();
         } catch (Exception e) {
             return null;
@@ -503,16 +500,10 @@ public class ChatController {
 
         InboundMessage inbound;
         if (agentId == null || agentId.isBlank()) {
-            // No agent override and no conversation scoping — pure binding-driven routing.
-            inbound = InboundMessage.dm(ChatUiChannel.CHANNEL_ID, userId, List.of(userMsg));
+            inbound = routedInboundMessage(userId, null, List.of(userMsg), conversationId);
         } else {
             String gatewayAgentId = catalogService.resolveGatewayAgentId(userId, agentId);
-            inbound =
-                    InboundMessage.builder(
-                                    ChatUiChannel.CHANNEL_ID, Peer.direct(userId), List.of(userMsg))
-                            .preferredAgentId(gatewayAgentId)
-                            .accountId(conversationId)
-                            .build();
+            inbound = routedInboundMessage(userId, gatewayAgentId, List.of(userMsg), conversationId);
         }
         Mono<Msg> call = chatUiChannel.dispatch(inbound);
 
@@ -521,6 +512,31 @@ public class ChatController {
                 reply ->
                         usageStore.record(
                                 userId, recordedAgentId, System.currentTimeMillis() - startMs));
+    }
+
+    private InboundMessage routedInboundMessage(
+            String userId, String preferredAgentId, List<Msg> messages, String conversationId) {
+        InboundMessage.Builder builder;
+        if (conversationId != null && !conversationId.isBlank()) {
+            builder =
+                    InboundMessage.builder(
+                                    ChatUiChannel.CHANNEL_ID,
+                                    Peer.thread(conversationId),
+                                    messages != null ? messages : List.of())
+                            .parentPeer(Peer.direct(userId))
+                            .senderId(userId);
+        } else {
+            builder =
+                    InboundMessage.builder(
+                                    ChatUiChannel.CHANNEL_ID,
+                                    Peer.direct(userId),
+                                    messages != null ? messages : List.of())
+                            .senderId(userId);
+        }
+        if (preferredAgentId != null && !preferredAgentId.isBlank()) {
+            builder.preferredAgentId(preferredAgentId);
+        }
+        return builder.build();
     }
 
     private ServerSentEvent<String> sse(String eventType, Object data) {

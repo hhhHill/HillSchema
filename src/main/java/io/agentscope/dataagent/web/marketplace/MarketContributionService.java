@@ -32,6 +32,8 @@ import java.util.Objects;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,8 +42,9 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>Users nominate one or more workspace files (skills, sub-agents, memory snippets, AGENTS.md,
  * knowledge documents) from their isolated workspace; admins approve, and the snapshot is
- * materialised under {@code ${dataagentHome}/shared/agents/<targetAgentId>/<type>/<path>} so the
- * content becomes immediately visible to every user of that agent through the sandbox projection.
+ * materialised under {@code ${dataagentHome}/shared/agents/<targetAgentId>/<type>/<path>}. In the
+ * local-only downgrade, sandbox invalidation is optional; approval still persists the shared
+ * artifact even when no sandbox registry is present.
  *
  * <p>The shared-layer layout is per-agent ({@code shared/agents/<agentId>/}) to mirror the
  * {@code IsolationScope.AGENT} namespace used by the harness's
@@ -68,16 +71,22 @@ public class MarketContributionService {
             new TypeReference<>() {};
 
     private final ContributionRepository repository;
-    private final UserSandboxRegistry sandboxRegistry;
+    private final @Nullable UserSandboxRegistry sandboxRegistry;
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
     private final Path sharedRoot;
 
     public MarketContributionService(
+            ContributionRepository repository, DataAgentBootstrap bootstrap) {
+        this(repository, bootstrap, null);
+    }
+
+    @Autowired
+    public MarketContributionService(
             ContributionRepository repository,
             DataAgentBootstrap bootstrap,
-            UserSandboxRegistry sandboxRegistry) {
+            @Nullable UserSandboxRegistry sandboxRegistry) {
         this.repository = Objects.requireNonNull(repository, "repository");
-        this.sandboxRegistry = Objects.requireNonNull(sandboxRegistry, "sandboxRegistry");
+        this.sandboxRegistry = sandboxRegistry;
         this.sharedRoot = bootstrap.cwd().resolve("shared");
     }
 
@@ -211,9 +220,15 @@ public class MarketContributionService {
         entity.setUpdatedAt(System.currentTimeMillis());
         ContributionEntity saved = repository.save(entity);
 
-        // Force every existing sandbox of the target agent to be torn down so the next borrow
-        // re-creates a container that picks up the new files from the shared projection.
-        sandboxRegistry.invalidate(null, entity.getTargetAgentId());
+        if (sandboxRegistry != null) {
+            // Force every existing sandbox of the target agent to be torn down so the next borrow
+            // re-creates a container that picks up the new files from the shared projection.
+            sandboxRegistry.invalidate(null, entity.getTargetAgentId());
+        } else {
+            log.info(
+                    "Approved contribution id={} without sandbox invalidation; local-only workspace mode is active",
+                    id);
+        }
         return saved;
     }
 

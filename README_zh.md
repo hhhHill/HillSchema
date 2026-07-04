@@ -1,350 +1,316 @@
-# agentscope-dataagent
+# HillSchema
 
-> 🇬🇧 English version: [README.md](README.md)
+本项目是一个基于 AgentScope / HarnessAgent 的数据分析演示应用，当前形态是：
 
-## 项目概览
+- 后端：Spring Boot 4 + WebFlux + JPA
+- 前端：React + Vite
+- 默认主入口：`/insights`
+- 默认运行方式：纯本地，不依赖 Docker
+- 默认持久化：本地 H2
 
-dataagent 让公司里**每位数据分析师都有一个属于自己的数据 agent** —— 它会摸熟你们组用的数据源、习惯的报表风格、踩过的坑，越用越顺手。
+现在这套代码更适合做本地演示、洞察页联调和会话追问验证，而不是分布式生产部署。
 
-设计上有三件事最能说明它的不同：
+## 当前能力
 
-- **多人并行进化、互不干扰。** 每个用户都有自己的私有 workspace。他教 agent 的技能、调出来的子智能体、积累下来的记忆，都是他自己的 —— 不会溢到别人那边。每个人拿到的初始 agent 是一样的，但它在不同人手里会长成不一样的模样。
-- **能力市场，不是大杂烩。** 当某个人确实磨出了一份值得共享的东西 —— 一项 SQL 技能、一个子智能体、一段 memory 备忘 —— 可以把它提名出来；管理员审完通过后，这份内容会进到一个共享库里，下一次别人的 agent 启动就会自动看到。知识自下而上流动，但中间有道闸。
-- **Sandbox 怎么管由你定。** agent 跑的每段脚本都在隔离的 sandbox 里。和 codingagent 不一样 —— codingagent 是运行时自己按 session 拉起、销毁容器的；dataagent 则把 sandbox 生命周期交给**你**：按你们安全和运维团队的口味去调容器规格、回收节奏，要带哪些数据库驱动和 notebook 工具链，全由你定。
+- 首页默认进入“问题”页，展示已经生成的洞察卡片
+- 点击问题后可以查看结论、证据，并继续追问
+- `/chat` 保留为独立聊天页，聊天记录会持久化并可恢复查看
+- 支持用户侧配置 Skills、Subagents、Tools、Channels
+- 支持管理员查看 Agents、Sessions、Approvals、Users、Usage
+- 支持把用户工作区内容提名为 contribution，经管理员审批后进入共享层
+- 支持读取已登记 JDBC 数据源，并基于电商五表语义生成洞察
 
-dataagent 从设计起就考虑了分布式部署 —— 打开共享状态开关，任意副本都能服务任意用户，不需要 sticky session。
+## 当前限制
 
-### HillSchema 洞察优先模式
+- 当前是本地优先模式，不再要求 Docker sandbox 才能启动
+- 用户侧 `Workspace` 不是主入口，主要通过 Skills / Subagents / Tools 页面间接管理
+- 演示数据源默认建议走本地 H2 脚本，不建议依赖 Docker MySQL
+- 这版更强调“先能本地跑通”，不是最终的多节点隔离方案
 
-这个分支把默认主入口改成了 **insight-first**：
+## 环境要求
 
-- 用户登录后默认进入 `/insights`，而不是 `/chat`。
-- 后端每分钟扫描一次已登记 JDBC 数据源，把生成好的洞察批次、问题消息和证据快照持久化。
-- 首页展示的是**已经生成好的问题流**；详情页展示的是问题生成当时的结论和证据快照。
-- 详情页下半部分的继续追问会把当前问题上下文显式注入现有聊天运行时，而不是退化成泛化数据库问答。
+- JDK 17+
+- Maven 3.9+
+- Windows PowerShell
+- 首次构建时需要联网下载 Maven / npm 依赖
 
-### 一览
+前端不要求你先手工安装 Node。`mvn` 会通过 `frontend-maven-plugin` 自动安装仓库内需要的 Node 和 npm。
 
-| | dataagent |
-|---|---|
-| **适用场景** | 一组数据分析师，每人都需要一个会进化的 SQL / 图表 / 报表 agent，并希望把内部经验沉淀到共享库 |
-| **用户数** | 多人 —— 每人一个私有 workspace，外加可选的侧边通道 |
-| **隔离** | 按 `(用户, agent)` 划分的私有 workspace；脚本跑在隔离 sandbox |
-| **自进化** | ✅ per-用户进化；**外加**经审批的贡献会进入共享库 |
-| **Sandbox 生命周期** | **由应用方掌握** —— 在 agent 运行时之外完成创建、规格、回收 |
-| **通道** | 内置 Web UI · 钉钉 · 通用 HTTP Webhook |
-| **分布式** | ✅ 一等公民 —— 打开共享状态后，任意副本都能服务任意用户 |
-| **文件系统** | 脚本执行用 `SandboxFilesystem`；私有 / 共享技能融合用 `OverlayFilesystem` |
+## 快速启动
 
-### 架构
+在项目根目录 `D:\HillSchema` 打开 PowerShell。
 
-dataagent 跑在 **HarnessAgent + `SandboxFilesystem`** 之上，sandbox 生命周期由应用方持有（你决定 sandbox 何时、何处、以什么形态存在 —— 而不是运行时）。sandbox 之上挂着一个 `OverlayFilesystem`，把 per-用户的 `RemoteFilesystem`（上层、可写）和全局 `shared/` 目录（下层、只读，由 marketplace 审批流维护）融合起来。
+### 1. 启动后端
 
-```
-┌───────────────────────────────────────────────────────────────────────┐
-│  agentscope-dataagent（端口 8080，Spring Boot WebFlux）               │
-│                                                                       │
-│   React SPA ──▶ REST API (JWT)                                        │
-│                  │                                                    │
-│                  ▼                                                    │
-│   ┌─────────────────────────────────────────────────────────────────┐ │
-│   │  HarnessGateway                                                 │ │
-│   │   ├ data-agent              （内置骨架，GLOBAL）                │ │
-│   │   └ uda-{userId}-{agentId}  （每用户 fork、每租户独占）         │ │
-│   └────────────────────────┬────────────────────────────────────────┘ │
-│                            ▼                                          │
-│   ┌─────────────────────────────────────────────────────────────────┐ │
-│   │  per-(userId, agentId) 文件系统栈                               │ │
-│   │   ┌──────────────────────────────────────────────────────────┐  │ │
-│   │   │ OverlayFilesystem  （skills/、subagents/）               │  │ │
-│   │   │   ┌── 上层：per-用户 RemoteFilesystem（可写） ──┐        │  │ │
-│   │   │   └── 下层：shared/{skills,subagents}（只读）   │        │  │ │
-│   │   └──────────────────────────────────────────────────────────┘  │ │
-│   │   memory/、MEMORY.md、sessions/、tasks/   ← per-用户 RemoteFS  │ │
-│   │   knowledge/、AGENTS.md                   ← 共享（只读）       │ │
-│   │                                                                 │ │
-│   │   SandboxFilesystem  （脚本执行）                               │ │
-│   │     ▲ 生命周期由应用方管理（而不是运行时）                      │ │
-│   └─────────────────────────────────────────────────────────────────┘ │
-│                                                                       │
-│   能力市场:  用户贡献 ─▶ 管理员审批 ─▶ shared/ 持续生长               │
-│   通道:      chatui · dingtalk · 通用 webhook                         │
-│   存储:      默认嵌入式 H2（生产可切到 MySQL / PostgreSQL）           │
-└───────────────────────────────────────────────────────────────────────┘
+```powershell
+mvn --% spring-boot:run
 ```
 
-设置 `dataagent.session.redis.enabled=true` 后，per-用户的 `RemoteFilesystem`、`Session`、`ToolEventBus` 全部走 Redis —— 任意副本都能服务任意用户。详见 [`docs/cluster-deploy.md`](docs/cluster-deploy.md)。
+默认地址：
 
----
+- 应用首页：[http://localhost:8080](http://localhost:8080)
+- 登录页：[http://localhost:8080/login](http://localhost:8080/login)
+- 问题页：[http://localhost:8080/insights](http://localhost:8080/insights)
 
-## 默认包含
+如果 `8080` 被占用：
 
-- **内置 `data-agent`** —— 全局骨架，自带 SQL 分析、图表渲染技能，外加 `data-explorer` / `report-writer` 子智能体。
-- **per-用户数据 agent** —— 任一登录用户都可以 fork 内置或新建。每个用户 agent 拥有独立的 `CompositeFilesystem`，按 `(userId, agentId)` 切分；`skills/` 和 `subagents/` 是 `OverlayFilesystem`，下层是磁盘上共享的内容。
-- **通道（v1）** —— `chatui`（默认开启、主用）、`dingtalk`（可选，原样从 agentscope-builder 移植）以及全新的**通用 Webhook** 通道（HMAC 签名入站，回调 / 长轮询出站）。
-- **能力市场** —— 用户从自己 workspace 中提名 skill / 子智能体 / memory 片段作为 *contributions*。管理员在 Approvals 页审批，通过后内容落到 `shared/`，下次构建时所有租户都能看到。
-- **已登记 JDBC 数据工具能力** —— `list_data_sources`、`describe_table`、`run_sql_preview`、`render_chart` 默认注册在每个 data agent 上。当前已经支持对配置里的 JDBC 数据源做只读表结构查看和 SQL preview。
-- **洞察刷新链路** —— 电商语义检测器按固定周期扫描已登记 JDBC 数据源，把结构化候选和证据快照沉淀成可展示的问题消息。
-- **洞察首页 + 问题上下文追问** —— `/insights` 展示持久化后的问题流，`/api/agents/{agentId}/insights/{itemId}` 返回详情投影，详情页继续追问复用现有 chat/session 运行时并显式注入当前问题上下文。
-
----
-
-## per-用户隔离
-
-每个 `HarnessAgent` 都跑在 `WorkspaceManagerFactory.forAgent(ownerId, agentId)` 构建出来的 `CompositeFilesystem` 上：
-
-| 路径 | 挂载方式 |
-|---|---|
-| `memory/`、`MEMORY.md`、`sessions/`、`tasks/` | `RemoteFilesystem`，按 `(ownerId, agentId)` 命名空间隔离 |
-| `skills/`、`subagents/` | `OverlayFilesystem` —— 上层是 per-用户 `RemoteFilesystem`，下层是共享目录 `shared/{skills,subagents}/` |
-| `knowledge/`、`AGENTS.md` | 磁盘上的共享根目录，对租户只读挂载（变更只能走能力市场贡献流程） |
-
-当 `dataagent.session.redis.enabled=true` 时，同一份 `RemoteFilesystem` 由 Redis 后端支撑（跨副本重启可恢复）；否则是本机文件存储。详见 [`docs/cluster-deploy.md`](docs/cluster-deploy.md)。
-
----
-
-## 能力市场流程
-
-1. 用户（或 agent 自己通过 `contribute_to_workspace` 工具）从自己的 workspace 提交一个文件作为贡献：
-   ```http
-   POST /api/me/contributions
-   { "targetType": "skill",
-     "targetPath": "cohort-builder/SKILL.md",
-     "rationale": "...",
-     "payload": "<file contents>" }
-   ```
-2. 贡献以 `PENDING` 状态持久化，呈现在管理员的 `/admin/approvals` 页。
-3. 管理员通过 → payload 落到 `~/.agentscope/dataagent/workspace/shared/skills/cohort-builder/SKILL.md`。
-4. 每个 per-`(userId, agentId)` 的 overlay 在下次构建时就能看到，无需重启即对所有租户可见。
-
-能力市场的颗粒度故意比 per-agent 的 ACL 共享更细 —— 单个贡献的单位是一项 skill / 一个子智能体 / 一段 memory，而不是整个 agent。
-
----
-
-## 快速开始
-
-### 1. 配置模型
-
-```bash
-export DASHSCOPE_API_KEY=sk-...
+```powershell
+mvn --% spring-boot:run -Dspring-boot.run.arguments=--server.port=18080
 ```
 
-或者提供你自己的 `Model` Spring Bean 切到其他 provider。
+### 2. 单独启动前端热更新（可选）
 
-### 2. 登记至少一个 JDBC 数据源给洞察链路使用
+如果你要改前端并实时预览，再开一个终端：
 
-自动洞察只会扫描 `dataagent.data.sources[*]` 下声明的数据源。一个最小示例：
-
-```yaml
-dataagent:
-  data:
-    sources:
-      - id: shop-demo
-        label: Shop Demo
-        kind: jdbc
-        jdbc-url: jdbc:mysql://localhost:3306/shop
-        driver-class-name: com.mysql.cj.jdbc.Driver
-        username: shop_reader
-        password: ${SHOP_DB_PASSWORD:}
-        preview-row-limit: 50
-        sample-row-limit: 5
-        semantic:
-          orders: orders
-          order-items: order_items
-          users: users
-          products: products
-          refunds: refunds
-          time-column: created_at
+```powershell
+Set-Location D:\HillSchema\frontend
+npm install
+npm run dev
 ```
 
-第一版默认围绕上面这套电商五表语义工作。如果没有配置任何数据源，调度器会空跑，`/insights` 首页也不会出现问题消息。
+Vite 默认会给出类似 [http://localhost:5173](http://localhost:5173) 或 [http://localhost:5174](http://localhost:5174) 的地址。  
+如果你只是正常使用项目，不需要单独起这一套，直接访问后端 `8080` 即可。
 
-### 3.（可选）启用 Redis 做分布式部署
+## 默认账号
 
-```yaml
-dataagent:
-  session:
-    redis:
-      enabled: true
-      host: redis.internal
-      port: 6379
-      password: ${REDIS_PASSWORD:}
-      database: 0
-      key-prefix: "dataagent:session:"
+本地 H2 初始化会种入两个演示账号：
+
+- `bob / bob`
+- `alice / alice`
+
+管理员能力取决于数据库里已有用户角色；当前本地环境通常会自动带上管理员可用数据。
+
+## 推荐的本地演示流程
+
+如果你希望 `/insights` 首页稳定出现“订单下降、退款升高、organic 下滑”这类演示卡片，建议使用仓库内置的本地 H2 业务库脚本。
+
+### 1. 生成本地演示业务库
+
+```powershell
+Set-Location D:\HillSchema
+powershell -ExecutionPolicy Bypass -File .\scripts\seed-local-shop-demo-anomaly.ps1
 ```
 
-启用后：
+这个脚本会创建一个本地 H2 业务数据库，路径默认在：
 
-- `RemoteFilesystem` 写入走 Redis —— 被路由到副本 R2 的租户能看到 R1 写到 `memory/` / `sessions/` 等的内容。
-- `ToolEventBus` 切成 Redis Pub/Sub —— R2 上的 SSE 消费方能收到 R1 在同一 session 触发的 tool-call 事件。
-- 启动前置检查：如果 `dataagent.workspace` 指向临时路径（`/tmp/`、`/var/tmp/` 等），会拒绝启动。
-
-3 副本部署详见 [`docs/cluster-deploy.md`](docs/cluster-deploy.md)。
-
-### 4.（可选）启用 Webhook 侧通道
-
-在 `~/.agentscope/dataagent/agentscope.json`：
-
-```json
-{
-  "channels": {
-    "ops-webhook": {
-      "type": "webhook",
-      "defaultAgentId": "data-agent",
-      "dmScope": "MAIN",
-      "properties": {
-        "sharedSecret": "${WEBHOOK_SECRET}",
-        "allowedIps": ["10.0.0.0/8"]
-      }
-    }
-  }
-}
+```text
+D:\HillSchema\output\demo-db\shop-demo
 ```
 
-外部系统这样调用：
+脚本会植入一组固定异常特征：
 
-```http
-POST /api/webhook/ops-webhook/inbound
-X-DataAgent-Sig: <body 的 HMAC-SHA256，hex>
-{ "externalUserId": "alice@corp",
-  "externalSessionId": "ticket-1234",
-  "message": "how many users signed up yesterday?",
-  "replyMode": "callback",
-  "callbackUrl": "https://ops.internal/webhook/dataagent" }
+- 最近 24 小时订单量低于前 24 小时
+- 当前退款率显著升高
+- `organic` 渠道跌幅最大
+
+### 2. 让应用加载这份演示数据源
+
+```powershell
+Set-Location D:\HillSchema
+$env:SPRING_CONFIG_ADDITIONAL_LOCATION = "optional:file:./scripts/local-shop-demo.datasource.yml"
+mvn --% spring-boot:run
 ```
 
-回复要么 POST 回 `callbackUrl`（同样的 HMAC），要么在 `replyMode=poll` 时停在 `GET /api/webhook/ops-webhook/outbound/{inboundId}` 等长轮询取走。
+启动后等待约 1 分钟，再打开：
 
-### 5. 运行
+- [http://localhost:8080/insights](http://localhost:8080/insights)
 
-```bash
-java -jar target/agentscope-dataagent-*-exec.jar
+### 3. 关闭额外数据源配置
+
+当你不想再使用这份演示业务库时，关闭当前终端，或手工清掉环境变量：
+
+```powershell
+Remove-Item Env:SPRING_CONFIG_ADDITIONAL_LOCATION -ErrorAction SilentlyContinue
 ```
 
-打开 **http://localhost:8080** 登录。H2 demo 种子会创建两个 demo 账号：`bob` / `bob` 与 `alice` / `alice`。第一个 `ROLE_ADMIN` 用户也会种入 —— 看启动 banner。
+## 数据存放位置
 
-登录后默认会进入 **`/insights`**。左上角导航仍然可以切回 `Chat` 和 `Workspace`。
+项目现在至少有两类本地数据：
 
-### 6. 本地联调洞察优先链路
+### 1. 应用自己的持久化库
 
-1. 启动应用，并确保至少登记了一个带电商语义映射的 JDBC 数据源。
-2. 等待一个刷新周期（`dataagent.insights.refresh-interval`，默认 `PT1M`），或者在本地测试/调试环境里直接调用 `InsightRefreshService.refreshNow(...)`。
-3. 打开 `/insights`，确认首页出现问题消息。
-4. 点击一条问题，确认标题、摘要、结论和证据快照彼此一致。
-5. 在详情页继续追问，确认回答围绕当前问题，而不是漂移成泛化问答。
-6. 打开 `/workspace`，确认原有 Workspace 页面仍然正常加载。
+默认是本地 H2，路径在：
 
----
-
-## 配置参考（`application.yml`）
-
-| 配置项 | 默认 | 说明 |
-|---|---|---|
-| `dataagent.jwt.secret` | 开发占位 | JWT 签名密钥（>= 32 字符）。**非 `dev` Profile 下若仍是默认值会拒绝启动**。 |
-| `dataagent.workspace` | `$CWD`（仅开发态） | agent 运行时状态的工作目录（与配置无关 —— 配置在 `~/.agentscope/dataagent/agentscope.json`）。**非 `dev` Profile 下必填**，留空就启动失败。 |
-| `dataagent.workspace-store.local.max-file-size-mb` | `10` | `RemoteFilesystem` 本地后端的单文件上限。 |
-| `dataagent.dashscope.api-key` | _空_ | DashScope API key（无 `Model` Bean 时回落到这里）。 |
-| `dataagent.dashscope.model-name` | `qwen-max` | DashScope 模型 id。 |
-| `dataagent.agent.name` | `data-agent` | 自动生成 `~/.agentscope/dataagent/agentscope.json` 时的 agent 名 |
-| `dataagent.agent.sys-prompt` | _（内置）_ | 自动生成 `agentscope.json` 时的系统提示 |
-| `dataagent.channels.chatui.enabled` | `true` | 主 Web 通道，默认开启 |
-| `dataagent.session.redis.enabled` | `false` | 是否启用 Redis 分布式 agent 状态 |
-| `dataagent.session.redis.host/port/password/database` | `localhost:6379/0` | Redis 连接 |
-| `dataagent.session.redis.key-prefix` | `dataagent:session:` | Redis key 前缀 |
-| `dataagent.marketplace.enabled` | `true` | 关掉则隐藏贡献 + 审批 API |
-| `dataagent.marketplace.max-contribution-bytes` | `1048576` | `POST /api/me/contributions` 接受的最大 payload |
-| `dataagent.data.sources[*]` | `[]` | 已登记的只读数据源，既供 toolkit 使用，也供洞察刷新链路扫描。JDBC 源应提供电商五表语义映射（`orders`、`order-items`、`users`、`products`、`refunds`，可选 `time-column`）。 |
-| `dataagent.insights.enabled` | `true` | 是否启用后台洞察刷新循环 |
-| `dataagent.insights.refresh-interval` | `PT1M` | 固定频率的洞察刷新间隔。当前实现会把任何小于 1 分钟的值提升回 1 分钟。 |
-| `server.port` | `8080` | HTTP 端口 |
-
-用户、agent、贡献记录默认持久化到嵌入式 H2，开箱即用，便于本地快速体验。生产部署时，激活 `jdbc` Spring Profile 并设置 `DATAAGENT_DB_URL` / `DATAAGENT_DB_USER` / `DATAAGENT_DB_PASSWORD` 即可切换到 MySQL 或 PostgreSQL。
-
----
-
-## API 端点
-
-### 公开
-
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| `POST` | `/api/auth/login` | 登录，返回 JWT |
-| `POST` | `/api/webhook/{channelId}/inbound` | 通用 webhook 入站（必须带 HMAC） |
-| `GET` | `/api/webhook/{channelId}/outbound/{inboundId}` | `poll` 模式下长轮询取回复 |
-
-### 用户级（任何登录用户）
-
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| `GET` | `/api/auth/me` | 当前用户信息 |
-| `GET` | `/api/me/agent-info` | 内置 `data-agent` 元数据 |
-| `POST` | `/api/agents/{agentId}/chat/stream` | 针对所选 agent 的 SSE 流式对话 |
-| `POST` | `/api/agents/{agentId}/chat/send` | 针对所选 agent 的同步对话 |
-| `GET` | `/api/agents/{agentId}/chat/session` | 探测 / 解析当前对话会话键 |
-| `GET` | `/api/agents/{agentId}/sessions/inbox` | 列出该 agent 下的会话 inbox |
-| `GET` | `/api/agents/{agentId}/sessions/{key}` | 某个会话的结构化 transcript |
-| `POST` | `/api/agents/{agentId}/sessions/{key}/reset` | 重置会话 |
-| `PATCH` | `/api/agents/{agentId}/sessions/{key}/read` | 标记会话为已读 |
-| `DELETE` | `/api/agents/{agentId}/sessions/{key}` | 删除会话 |
-| `GET` | `/api/agents/{agentId}/insights` | 首页问题流接口 |
-| `GET` | `/api/agents/{agentId}/insights/{itemId}` | 问题详情接口（含证据快照） |
-| `POST` | `/api/agents/{agentId}/insights/{itemId}/chat/send` | 问题上下文同步追问接口 |
-| `GET` | `/api/agents/{agentId}/workspace` | 该 agent 的 Workspace 摘要 |
-| `GET` | `/api/agents/{agentId}/workspace/files` | Workspace 文件树 |
-| `GET` | `/api/agents/{agentId}/workspace/file` | 读取单个 Workspace 文件 |
-| `GET` `POST` | `/api/me/agents` | 列出 / 新建 per-用户数据 agent |
-| `GET` `POST` | `/api/me/agents/{id}/skills` | 列出 / 写入 workspace 中的 skill |
-| `GET` `POST` | `/api/me/agents/{id}/tools` | 列出 / 注册自定义工具 |
-| `POST` | `/api/me/agents/{sourceId}/clone` | fork 一个内置或自己的 agent |
-| `GET` `POST` | `/api/user/bindings` | 列出 / 新增通道偏好 |
-| `PUT` `DELETE` | `/api/user/bindings/{index}` | 更新 / 删除偏好 |
-| `GET` `POST` | `/api/me/contributions` | 列出自己的贡献 / 提交新贡献 |
-
-### 管理员级（`ROLE_ADMIN`）
-
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| `GET` `POST` | `/api/admin/users` | 列出 / 新建用户 |
-| `GET` | `/api/admin/runtime/overview` | 平台概览 |
-| `GET` | `/api/admin/runtime/instances` | 已注册的 agent 实例 |
-| `GET` | `/api/admin/runtime/sessions` | 全部 session |
-| `GET` | `/api/admin/runtime/channels` | 通道状态 |
-| `GET` | `/api/admin/contributions?status=PENDING\|APPROVED\|REJECTED` | 列出贡献 |
-| `POST` | `/api/admin/contributions/{id}/approve` | 通过 → 写入 `shared/` |
-| `POST` | `/api/admin/contributions/{id}/reject` | 驳回，附评审备注 |
-| `GET` | `/api/admin/config/agentscope` | 原始 `agentscope.json` |
-| `GET` | `/api/admin/channels/{channelId}/bindings` | 某通道的路由绑定 |
-| `GET` | `/api/admin/usage/...` | 用量汇总（per-用户 / per-agent / 按小时 / 按天） |
-
----
-
-## 第一版限制
-
-- 洞察检测当前对比的是**固定 24 小时窗口**与它前一个 24 小时窗口，暂时还不是用户可配置时间区间。
-- 第一版默认只承接**已登记 JDBC 数据源 + 电商五表语义映射**，不会自动理解任意 schema。
-- 异常检测逻辑目前仍然是**本地确定性计算**；模型主要负责文案表达和详情页继续追问，不负责主检测逻辑。
-- 问题上下文追问当前落在同步接口 `/insights/{itemId}/chat/send`；原有全局 `/chat` 能力仍然保留并并存。
-
-### 下一步收紧方向
-
-- 把问题检测窗口做成可配置，而不是固定 24h。
-- 进一步收紧边界：异常和趋势尽量全由本地计算产出，模型只负责表达和解释已经算出来的结果。
-
----
-
-## 构建
-
-```bash
-mvn -pl agentscope-examples/agents/agentscope-dataagent -am package -DskipTests
+```text
+C:\Users\<你的用户名>\.agentscope-dataagent\
 ```
 
-输出：
+这里保存：
 
-- `target/agentscope-dataagent-<version>-exec.jar` —— 可执行 fat JAR
-- `target/agentscope-dataagent-<version>.jar` —— thin 库 JAR
+- 用户
+- 权限
+- contribution
+- insight 持久化数据
+- 其他 JPA 管理的数据
 
-格式检查（CI 会卡）：
+### 2. Agent 工作目录和默认种子
 
-```bash
-mvn -pl agentscope-examples/agents/agentscope-dataagent spotless:check
+默认目录在：
+
+```text
+C:\Users\<你的用户名>\.agentscope\dataagent\
 ```
+
+以及项目根目录下的：
+
+```text
+D:\HillSchema\.agentscope\
+D:\HillSchema\shared\
+```
+
+这里会涉及：
+
+- 默认 agent 配置
+- skills / subagents / knowledge 种子
+- 本地 session 恢复文件
+- 共享 contribution 落地内容
+
+### 3. 本地演示业务库
+
+如果你运行了演示脚本，则业务演示数据在：
+
+```text
+D:\HillSchema\output\demo-db\
+```
+
+它和应用自己的 H2 不是一回事。
+
+## 模型配置
+
+如果你希望聊天、追问、分析文案都正常走模型，建议显式配置模型密钥，而不是依赖本地默认值。
+
+PowerShell 示例：
+
+```powershell
+$env:DASHSCOPE_API_KEY = "你的-key"
+mvn --% spring-boot:run
+```
+
+如果没有有效模型：
+
+- 应用仍可能启动
+- 但聊天、追问、部分洞察文案能力会失败或退化
+
+## 常用页面
+
+用户侧常用页面：
+
+- `/insights`：问题首页
+- `/chat`：独立聊天页
+- `/configure/skills`
+- `/configure/subagents`
+- `/configure/tools`
+- `/configure/channels`
+- `/contributions`
+
+管理员侧常用页面：
+
+- `/admin/overview`
+- `/admin/agents`
+- `/admin/sessions`
+- `/admin/approvals`
+- `/admin/users`
+- `/admin/usage`
+
+## 开发命令
+
+### 后端测试
+
+```powershell
+mvn test
+```
+
+### 指定测试
+
+```powershell
+mvn --% -Dtest=WorkspaceManagerFactoryTest,ChatControllerTest,InsightChatControllerTest,InsightFeedServiceTest test
+```
+
+### 前端开发
+
+```powershell
+Set-Location D:\HillSchema\frontend
+npm run dev
+```
+
+### 前端测试
+
+```powershell
+Set-Location D:\HillSchema\frontend
+npm test
+```
+
+### 打包
+
+```powershell
+Set-Location D:\HillSchema
+mvn -DskipTests package
+```
+
+产物默认在：
+
+```text
+D:\HillSchema\target\
+```
+
+主要包括：
+
+- `agentscope-dataagent-2.0.0-SNAPSHOT-exec.jar`
+- `agentscope-dataagent-2.0.0-SNAPSHOT.jar`
+
+## 常见问题
+
+### 1. 为什么我看到的还是旧页面？
+
+先确认你访问的是哪个地址：
+
+- 后端静态页：`http://localhost:8080`
+- Vite 开发页：通常是 `http://localhost:5173` 或 `http://localhost:5174`
+
+如果你运行的是 `npm run dev`，应该看 Vite 输出的那个地址，而不是 `8080`。
+
+### 2. 为什么 `/insights` 没有数据？
+
+常见原因：
+
+- 没有登记任何 `dataagent.data.sources`
+- 没有跑本地演示脚本
+- 刷新周期还没到，默认是 1 分钟
+- 模型不可用，导致部分洞察生成链路失败
+
+建议优先走“本地演示流程”那一节。
+
+### 3. 现在还能不能用 Docker？
+
+仓库里还保留了旧的 Docker MySQL 演示文件，但当前 README 不把它作为主路径。  
+按照现在的项目状态，优先使用本地 H2 演示脚本。
+
+### 4. 用户侧为什么看不到 Workspace 主入口？
+
+这是有意的前端降级。当前用户主路径聚焦在：
+
+- 问题浏览
+- Chat
+- 配置页
+
+Workspace 相关能力仍然存在，但不再作为用户默认主入口暴露。
+
+## 相关文件
+
+- 配置主文件：[application.yml](D:/HillSchema/src/main/resources/application.yml)
+- JDBC profile：[application-jdbc.yml](D:/HillSchema/src/main/resources/application-jdbc.yml)
+- 本地演示数据源配置：[local-shop-demo.datasource.yml](D:/HillSchema/scripts/local-shop-demo.datasource.yml)
+- 本地演示造数脚本：[seed-local-shop-demo-anomaly.ps1](D:/HillSchema/scripts/seed-local-shop-demo-anomaly.ps1)
+- 前端入口：[main.tsx](D:/HillSchema/frontend/src/main.tsx)
+- 后端启动类：[DataAgentApp.java](D:/HillSchema/src/main/java/io/agentscope/dataagent/web/DataAgentApp.java)
+
+## 当前建议
+
+如果你的目标是“快速演示当前产品能力”，推荐按这个顺序：
+
+1. 跑本地演示造数脚本
+2. 用额外 Spring 配置加载 `local-shop-demo.datasource.yml`
+3. 启动后端
+4. 登录后直接看 `/insights`
+5. 进入详情页继续追问
+6. 再去 `/chat` 看会话恢复和独立聊天

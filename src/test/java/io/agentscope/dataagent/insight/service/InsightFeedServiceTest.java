@@ -26,6 +26,7 @@ import io.agentscope.dataagent.insight.persistence.jpa.InsightItemEntity;
 import io.agentscope.dataagent.insight.persistence.jpa.InsightItemRepository;
 import java.time.Instant;
 import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
@@ -53,6 +54,13 @@ class InsightFeedServiceTest {
     @Autowired private InsightItemRepository itemRepository;
     @Autowired private InsightEvidenceRepository evidenceRepository;
     @Autowired private InsightFeedService insightFeedService;
+
+    @BeforeEach
+    void cleanRepositories() {
+        evidenceRepository.deleteAll();
+        itemRepository.deleteAll();
+        batchRepository.deleteAll();
+    }
 
     @Test
     void listsNewestInsightsFirstForTheHomepageFeed() {
@@ -94,6 +102,65 @@ class InsightFeedServiceTest {
         assertThat(feed.get(0).status()).isEqualTo("NEW");
         assertThat(feed.get(1).id()).isEqualTo(older.getRowId());
         assertThat(feed.get(1).dimensionValue()).isEqualTo("直播");
+    }
+
+    @Test
+    void deduplicatesRecurringInsightsByFingerprintUsingTheLatestEntry() {
+        InsightBatchEntity batch = saveBatch();
+        InsightItemEntity first =
+                saveItem(
+                        batch,
+                        101L,
+                        "有机渠道订单量显著下降",
+                        "第一轮摘要",
+                        "第一轮证据",
+                        InsightStatus.NEW,
+                        Instant.parse("2026-06-30T08:00:00Z"),
+                        Instant.parse("2026-06-30T08:01:00Z"),
+                        "order_count",
+                        "订单量",
+                        "channel",
+                        "organic",
+                        "shop-demo:organic-order-drop");
+        InsightItemEntity latest =
+                saveItem(
+                        batch,
+                        102L,
+                        "有机渠道订单量显著下降",
+                        "第二轮摘要",
+                        "第二轮证据",
+                        InsightStatus.CONTINUING,
+                        Instant.parse("2026-06-30T09:00:00Z"),
+                        Instant.parse("2026-06-30T09:01:00Z"),
+                        "order_count",
+                        "订单量",
+                        "channel",
+                        "organic",
+                        "shop-demo:organic-order-drop");
+        InsightItemEntity other =
+                saveItem(
+                        batch,
+                        202L,
+                        "退款率突然抬升",
+                        "退款率摘要",
+                        "退款率证据",
+                        InsightStatus.NEW,
+                        Instant.parse("2026-06-30T10:00:00Z"),
+                        Instant.parse("2026-06-30T10:01:00Z"),
+                        "refund_rate",
+                        "退款率",
+                        null,
+                        null,
+                        "shop-demo:refund-rate-rise");
+
+        List<InsightFeedService.FeedItem> feed = insightFeedService.listFeed(10);
+
+        assertThat(feed).hasSize(2);
+        assertThat(feed).extracting(InsightFeedService.FeedItem::id)
+                .containsExactly(other.getRowId(), latest.getRowId());
+        assertThat(feed).extracting(InsightFeedService.FeedItem::status)
+                .containsExactly("NEW", "CONTINUING");
+        assertThat(feed).noneMatch(item -> item.id() == first.getRowId());
     }
 
     @Test
@@ -163,12 +230,42 @@ class InsightFeedServiceTest {
             String metricLabel,
             String dimensionName,
             String dimensionValue) {
+        return saveItem(
+                batch,
+                expectedId,
+                title,
+                summary,
+                evidenceSummary,
+                status,
+                observedAt,
+                createdAt,
+                metricKey,
+                metricLabel,
+                dimensionName,
+                dimensionValue,
+                "shop-demo:" + expectedId);
+    }
+
+    private InsightItemEntity saveItem(
+            InsightBatchEntity batch,
+            Long expectedId,
+            String title,
+            String summary,
+            String evidenceSummary,
+            InsightStatus status,
+            Instant observedAt,
+            Instant createdAt,
+            String metricKey,
+            String metricLabel,
+            String dimensionName,
+            String dimensionValue,
+            String fingerprint) {
         InsightItemEntity item = new InsightItemEntity();
         item.setBatch(batch);
         item.setSourceId("shop-demo");
         item.setKind("ANOMALY");
         item.setStatus(status);
-        item.setFingerprint("shop-demo:" + expectedId);
+        item.setFingerprint(fingerprint);
         item.setTitle(title);
         item.setSummary(summary);
         item.setConclusion(summary);

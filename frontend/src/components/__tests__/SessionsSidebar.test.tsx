@@ -21,15 +21,17 @@ describe('SessionsSidebar', () => {
     vi.clearAllMocks();
   });
 
-  it('does not render a workspace entry outside the chat route', async () => {
+  it('uses the approved Chinese copy for the problem-first navigation', async () => {
     render(
       <MemoryRouter initialEntries={['/insights']}>
         <SessionsSidebar refreshKey={0} />
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('button', { name: /Insights/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /问题/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Chat/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Workspace/i })).not.toBeInTheDocument();
+    expect(screen.getByText('先看问题')).toBeInTheDocument();
+    expect(screen.getByText(/首页先展示已生成的问题和结论/)).toBeInTheDocument();
   });
 });

@@ -15,9 +15,9 @@ export default function BackToChatHeader({ title, subtitle }: BackToChatHeaderPr
         style={S.backBtn}
         onMouseEnter={e => { e.currentTarget.style.background = '#eef2ff'; e.currentTarget.style.color = '#3730a3'; }}
         onMouseLeave={e => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.color = '#475569'; }}
-        title="Return to insight feed"
+        title="返回问题列表"
       >
-        ← 返回洞察流
+        ← 返回问题列表
       </button>
       <div style={S.titleBlock}>
         <span style={S.title}>{title}</span>

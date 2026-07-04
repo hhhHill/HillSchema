@@ -36,7 +36,7 @@ vi.mock('react-router-dom', async () => {
 
 describe('InsightsPage', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   it('loads the feed, selects the first insight, and switches detail on click', async () => {
@@ -144,6 +144,10 @@ describe('InsightsPage', () => {
       </MemoryRouter>,
     );
 
+    expect(await screen.findByText('问题列表')).toBeInTheDocument();
+    expect(screen.getByText('先看现成结论，再决定要不要继续追问')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /进入 Chat/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Workspace/i })).not.toBeInTheDocument();
     expect(await screen.findByText('退款率突然抬升')).toBeInTheDocument();
     expect(await screen.findByText('售后问题仍在持续，优先检查商品与履约链路。')).toBeInTheDocument();
     expect(vi.mocked(insightsApi.getInsightDetail)).toHaveBeenCalledWith('data-agent', 202);
@@ -154,5 +158,19 @@ describe('InsightsPage', () => {
       expect(vi.mocked(insightsApi.getInsightDetail)).toHaveBeenLastCalledWith('data-agent', 101);
     });
     expect(await screen.findByText('直播渠道转化偏弱，需要结合投放与库存继续排查。')).toBeInTheDocument();
+  });
+
+  it('uses the approved empty-state copy for the problem home', async () => {
+    vi.mocked(insightsApi.listInsights).mockResolvedValueOnce([]);
+
+    render(
+      <MemoryRouter initialEntries={['/insights']}>
+        <Routes>
+          <Route path="/insights" element={<InsightsPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('还没有生成任何问题消息。等待后台调度写入后，这里会出现新的问题列表。')).toBeInTheDocument();
   });
 });

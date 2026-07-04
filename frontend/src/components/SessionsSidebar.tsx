@@ -17,7 +17,7 @@ interface PrimaryNavItem {
 }
 
 const PRIMARY_NAV_ITEMS: PrimaryNavItem[] = [
-  { label: 'Insights', path: '/insights', icon: '◎' },
+  { label: '问题', path: '/insights', icon: '◎' },
   { label: 'Chat', path: '/chat', icon: '💬' },
 ];
 
@@ -194,12 +194,12 @@ export default function SessionsSidebar({ refreshKey }: SessionsSidebarProps) {
         {!isChatRoute && (
           <div style={S.helperCard}>
             <div style={S.helperTitle}>
-              {location.pathname === '/insights' ? '洞察优先入口' : '应用导航'}
+              {location.pathname === '/insights' ? '先看问题' : '应用导航'}
             </div>
             <div style={S.helperText}>
               {location.pathname === '/insights'
-                ? '主区域会持续展示已经生成好的问题消息。点击卡片查看静态结论和证据快照。'
-                : '当前页面仍然可用。需要回到首页时，优先从左上角进入 Insights。'}
+                ? '首页先展示已生成的问题和结论。点击卡片查看结论和证据。'
+                : '当前页面仍然可用。需要回到首页时，优先从左上角进入“问题”。'}
             </div>
           </div>
         )}
@@ -414,7 +414,7 @@ const S: Record<string, React.CSSProperties> = {
     display: 'flex', flexDirection: 'column', gap: 10,
   },
   primaryNav: {
-    display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8,
+    display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8,
   },
   primaryNavBtn: {
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,

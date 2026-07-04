@@ -34,6 +34,8 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /** Persistent insight message shown later in the feed and detail views. */
 @Entity
@@ -61,6 +63,7 @@ public class InsightItemEntity {
     private String kind;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(name = "status", length = 32, nullable = false)
     private InsightStatus status;
 

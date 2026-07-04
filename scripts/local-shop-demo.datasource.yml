@@ -1,0 +1,22 @@
+# Register the local H2 ecommerce demo created by
+# scripts/seed-local-shop-demo-anomaly.ps1
+dataagent:
+  data:
+    sources:
+      - id: shop-demo
+        label: Shop Demo
+        description: Local H2 ecommerce dataset with a seeded order drop and refund spike.
+        kind: jdbc
+        jdbc-url: jdbc:h2:file:./output/demo-db/shop-demo;MODE=MYSQL;AUTO_SERVER=TRUE;DB_CLOSE_DELAY=-1
+        driver-class-name: org.h2.Driver
+        username: sa
+        password:
+        preview-row-limit: 50
+        sample-row-limit: 5
+        semantic:
+          orders: orders
+          order-items: order_items
+          users: users
+          products: products
+          refunds: refunds
+          time-column: created_at

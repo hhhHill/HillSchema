@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import ChatHeader from '../ChatHeader';
 
 describe('ChatHeader', () => {
-  it('does not render a workspace action for editable agents', () => {
+  it('uses the approved Chinese label for the problem home entry', () => {
     render(
       <MemoryRouter>
         <ChatHeader
@@ -23,7 +23,7 @@ describe('ChatHeader', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('button', { name: /Insights/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /问题/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Skills/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Workspace/i })).not.toBeInTheDocument();
   });

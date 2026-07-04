@@ -22,8 +22,9 @@ import io.agentscope.dataagent.insight.persistence.jpa.InsightEvidenceRepository
 import io.agentscope.dataagent.insight.persistence.jpa.InsightItemEntity;
 import io.agentscope.dataagent.insight.persistence.jpa.InsightItemRepository;
 import java.time.Instant;
-import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,7 +52,7 @@ public class InsightFeedService {
 
     public List<FeedItem> listFeed(int limit) {
         int resolvedLimit = normalizeLimit(limit);
-        return itemRepository.findAll(feedSort()).stream()
+        return deduplicateByFingerprint(itemRepository.findAll(feedSort())).stream()
                 .limit(resolvedLimit)
                 .map(this::toFeedItem)
                 .toList();
@@ -132,6 +133,22 @@ public class InsightFeedService {
                 Sort.Order.desc("observedAt"),
                 Sort.Order.desc("createdAt"),
                 Sort.Order.desc("rowId"));
+    }
+
+    private List<InsightItemEntity> deduplicateByFingerprint(List<InsightItemEntity> items) {
+        Map<String, InsightItemEntity> unique = new LinkedHashMap<>();
+        for (InsightItemEntity item : items) {
+            String key = dedupeKey(item);
+            unique.putIfAbsent(key, item);
+        }
+        return List.copyOf(unique.values());
+    }
+
+    private static String dedupeKey(InsightItemEntity item) {
+        if (item.getFingerprint() != null && !item.getFingerprint().isBlank()) {
+            return item.getFingerprint().trim();
+        }
+        return "row:" + item.getRowId();
     }
 
     private static int normalizeLimit(int limit) {

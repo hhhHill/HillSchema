@@ -31,6 +31,7 @@ import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 @SpringBootTest(
@@ -50,6 +51,7 @@ class InsightPersistenceTest {
     @Autowired private InsightBatchRepository batchRepository;
     @Autowired private InsightItemRepository itemRepository;
     @Autowired private InsightEvidenceRepository evidenceRepository;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     @Test
     void roundTripsBatchItemAndEvidenceSnapshot() {
@@ -106,6 +108,22 @@ class InsightPersistenceTest {
         assertThat(savedItem.getBaselineValue()).isEqualTo(12.0d);
         assertThat(savedEvidence.getLabel()).isEqualTo("当前订单量");
         assertThat(savedEvidence.getSnapshotJson()).contains("order_count");
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "select status from insight_item where row_id = ?",
+                                String.class,
+                                savedItem.getRowId()))
+                .isEqualTo("NEW");
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                """
+                                select data_type
+                                  from information_schema.columns
+                                 where table_name = 'INSIGHT_ITEM'
+                                   and column_name = 'STATUS'
+                                """,
+                                String.class))
+                .isEqualTo("CHARACTER VARYING");
     }
 
     @SpringBootConfiguration

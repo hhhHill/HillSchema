@@ -15,35 +15,38 @@
  */
 package io.agentscope.dataagent.web.workspace;
 
+import io.agentscope.dataagent.runtime.DataAgentBootstrap;
 import io.agentscope.harness.agent.filesystem.AbstractFilesystem;
-import io.agentscope.harness.agent.sandbox.Sandbox;
+import io.agentscope.harness.agent.filesystem.remote.store.NamespaceFactory;
+import io.agentscope.harness.agent.filesystem.spec.LocalFilesystemSpec;
 import io.agentscope.harness.agent.workspace.WorkspaceManager;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Objects;
+import java.nio.file.StandardCopyOption;
+import java.util.List;
 
 /**
  * Builds {@link WorkspaceManager} instances whose filesystem is backed by a per-{@code (userId,
- * agentId)} live {@link Sandbox} from {@link UserSandboxRegistry}.
+ * agentId)} local workspace directory.
  *
- * <p>The same {@link Sandbox} instance backs both the agent runtime (via {@code
- * SandboxContext.externalSandbox} injected by the HarnessGateway) and every browser controller's
- * workspace operation. This is what makes the workspace user-isolated: each user gets their own
- * container; there is no path-prefix namespace and no shared {@code LocalFilesystem} layer that
- * would otherwise leak content across tenants.
- *
- * <p>The {@link Path} returned by {@link WorkspaceManager#getWorkspace()} is a host-side label
- * (used for display, audit, and RuntimeContext metadata), <em>not</em> the on-disk
- * location of the file data. Actual reads/writes go through {@link SharedSandboxFilesystem} into
- * the container at {@code /workspace}.
+ * <p>In local mode, each user gets their own subtree under the agent workspace root. Both the
+ * workspace label and the writable filesystem now point at that same per-user directory so the
+ * browser-facing workspace CRUD stays isolated without requiring Docker.
  */
 public final class WorkspaceManagerFactory {
 
-    private final UserSandboxRegistry registry;
+    private static final List<String> SHARED_SEED_ROOTS =
+            List.of("AGENTS.md", "skills", "subagents", "knowledge");
 
-    public WorkspaceManagerFactory(UserSandboxRegistry registry) {
-        this.registry = Objects.requireNonNull(registry, "registry");
-    }
+    public WorkspaceManagerFactory() {}
+
+    /**
+     * Backwards-compatible constructor kept so existing tests/wiring can instantiate the factory
+     * without caring whether workspace mode is sandbox-backed or local.
+     */
+    public WorkspaceManagerFactory(UserSandboxRegistry ignoredRegistry) {}
 
     /**
      * Returns a {@link WorkspaceManager} for a user-scoped agent. Equivalent to
@@ -54,23 +57,23 @@ public final class WorkspaceManagerFactory {
     }
 
     /**
-     * Returns a {@link WorkspaceManager} for a user-scoped agent. Borrows (and starts on first
-     * use) the per-{@code (ownerId, agentId)} sandbox; the returned {@link WorkspaceManager} reads
-     * and writes through that sandbox via {@link SharedSandboxFilesystem}.
+     * Returns a {@link WorkspaceManager} for a user-scoped agent. The returned manager reads and
+     * writes through a local filesystem namespace dedicated to that owner.
      */
     public WorkspaceManager forAgent(String ownerId, String agentId, String workspacePath) {
         validateSegment("ownerId", ownerId);
         validateSegment("agentId", agentId);
-        Sandbox sb = registry.borrow(ownerId, agentId);
-        Path dataPath = resolveAgentDataPath(workspacePath, agentId);
-        return new WorkspaceManager(dataPath, new SharedSandboxFilesystem(sb));
+        Path baseRoot = resolveAgentDataPath(workspacePath, agentId);
+        Path userRoot = ensureUserWorkspace(baseRoot, ownerId);
+        return new WorkspaceManager(userRoot, localFilesystem(userRoot));
     }
 
     /**
      * Returns a {@link WorkspaceManager} for a global agent accessed by a specific user.
      * Equivalent to {@link #forAgent(String, String, String)} — once the filesystem layer is
-     * sandbox-backed, the global/user distinction disappears because the sandbox itself is keyed
-     * by {@code (userId, agentId)}. Kept as a separate entry point for call-site readability.
+     * local-namespaced, the global/user distinction disappears because the backing filesystem is
+     * still keyed by {@code (userId, agentId)}. Kept as a separate entry point for call-site
+     * readability.
      */
     public WorkspaceManager forGlobalAgent(String userId, String agentId) {
         return forAgent(userId, agentId, null);
@@ -90,13 +93,15 @@ public final class WorkspaceManagerFactory {
     public AbstractFilesystem userDataFs(String ownerId, String agentId, String workspacePath) {
         validateSegment("ownerId", ownerId);
         validateSegment("agentId", agentId);
-        return new SharedSandboxFilesystem(registry.borrow(ownerId, agentId));
+        Path baseRoot = resolveAgentDataPath(workspacePath, agentId);
+        Path userRoot = ensureUserWorkspace(baseRoot, ownerId);
+        return localFilesystem(userRoot);
     }
 
     /**
      * Path prefix under which {@link #userDataFs(String, String, String)} reports file paths.
-     * With sandbox-backed isolation the entire container belongs to one user, so the prefix is
-     * just the container root ({@code "/"}). Kept on the API surface to avoid forcing call-site
+     * With local per-user namespacing the prefix is still the logical root ({@code "/"}). Kept on
+     * the API surface to avoid forcing call-site
      * changes during the migration.
      */
     public String userDataPathPrefix(String ownerId, String agentId, String workspacePath) {
@@ -119,14 +124,10 @@ public final class WorkspaceManagerFactory {
      * </ul>
      */
     public Path resolveAgentDataPath(String workspacePath, String fallbackAgentId) {
-        String raw =
-                (workspacePath != null && !workspacePath.isBlank())
-                        ? workspacePath.trim()
-                        : fallbackAgentId;
-        if (raw == null || raw.isBlank()) {
-            throw new IllegalArgumentException(
-                    "workspacePath and fallbackAgentId are both null/blank");
+        if (workspacePath == null || workspacePath.isBlank()) {
+            return DataAgentBootstrap.DEFAULT_WORKSPACE_ROOT.toAbsolutePath().normalize();
         }
+        String raw = workspacePath.trim();
         Path p = Paths.get(raw);
         if (p.isAbsolute()) {
             return p.normalize();
@@ -138,6 +139,73 @@ public final class WorkspaceManagerFactory {
             return resolvedAgainstCwd;
         }
         return agentScopeBase.resolve(p).normalize();
+    }
+
+    private AbstractFilesystem localFilesystem(Path userRoot) {
+        LocalFilesystemSpec spec =
+                new LocalFilesystemSpec()
+                        .project(userRoot)
+                        .projectWritable(true)
+                        .virtualMode(false);
+        NamespaceFactory noNamespace = runtimeContext -> List.of();
+        return spec.toFilesystem(userRoot, noNamespace);
+    }
+
+    private Path ensureUserWorkspace(Path baseRoot, String ownerId) {
+        try {
+            Files.createDirectories(baseRoot);
+            Path userRoot = baseRoot.resolve(ownerId).normalize();
+            if (!Files.exists(userRoot)) {
+                Files.createDirectories(userRoot);
+                seedUserWorkspace(baseRoot, userRoot);
+            }
+            return userRoot;
+        } catch (IOException e) {
+            throw new IllegalStateException(
+                    "Failed to prepare local workspace for user '" + ownerId + "': " + e.getMessage(),
+                    e);
+        }
+    }
+
+    private void seedUserWorkspace(Path baseRoot, Path userRoot) throws IOException {
+        for (String entry : SHARED_SEED_ROOTS) {
+            Path source = baseRoot.resolve(entry).normalize();
+            Path target = userRoot.resolve(entry).normalize();
+            if (!Files.exists(source)) {
+                if (!entry.contains(".")) {
+                    Files.createDirectories(target);
+                }
+                continue;
+            }
+            if (Files.isDirectory(source)) {
+                copyDirectory(source, target);
+            } else {
+                Files.createDirectories(target.getParent());
+                Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
+    }
+
+    private static void copyDirectory(Path source, Path target) throws IOException {
+        Files.walk(source)
+                .forEach(
+                        path -> {
+                            try {
+                                Path relative = source.relativize(path);
+                                Path destination = target.resolve(relative).normalize();
+                                if (Files.isDirectory(path)) {
+                                    Files.createDirectories(destination);
+                                } else {
+                                    Files.createDirectories(destination.getParent());
+                                    Files.copy(
+                                            path,
+                                            destination,
+                                            StandardCopyOption.REPLACE_EXISTING);
+                                }
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        });
     }
 
     private static void validateSegment(String label, String value) {

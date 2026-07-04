@@ -24,7 +24,7 @@ export default function InsightFeedList({
     return <div style={{ ...stateBox, color: '#b91c1c', borderColor: '#fecaca', background: '#fef2f2' }}>{error}</div>;
   }
   if (items.length === 0) {
-    return <div style={stateBox}>还没有生成任何问题消息。等待后台调度写入后，这里会出现自动洞察流。</div>;
+    return <div style={stateBox}>还没有生成任何问题消息。等待后台调度写入后，这里会出现新的问题列表。</div>;
   }
 
   return (
